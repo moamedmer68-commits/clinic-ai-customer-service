@@ -26,7 +26,7 @@ This document is the source of truth for project scope, phase order, implementat
 | 2 | Backend Reliability & Error Handling | Completed — API contract, safe errors, correlation, and tests verified |
 | 3 | Customer Service Core & Intent Routing | Completed — explicit intent routing, clarification, bounded execution, and mocked routing tests verified |
 | 4 | FAQ Agent | In progress — dedicated grounded FAQ node and tests implemented; approved clinic FAQ facts still needed |
-| 5 | Appointment Agent Integration | In progress — appointment tools exist; end-to-end verification pending |
+| 5 | Appointment Agent Integration | Completed — booking specialist toolset, user-confirmation instructions, routing/integration tests, and existing mutation-integrity tests verified |
 | 6 | Conversation Memory | In progress — SQLite checkpointer and unit tests exist; API/UI verification pending |
 | 7 | RAG Knowledge Base | Not started |
 | 8 | Support & Human Escalation | Not started |
@@ -97,13 +97,11 @@ This document is the source of truth for project scope, phase order, implementat
 ## Phase 5 — Appointment Agent Integration
 **Goal:** Deliver complete appointment workflows through the agent/API using Phase 1 integrity guarantees.
 **Implemented/evidence observed:** lookup, booking, cancellation, and rescheduling tools exist in toolkit/toolkits.py; booking agent/node exists.
-**Remaining tasks:**
-- [ ] Define tool contracts, required fields, confirmations, and user-facing outcomes.
-- [ ] Integrate lookup/book/cancel/reschedule with clarification for missing doctor/date/time/patient ID.
-- [ ] Require confirmation before consequential mutations where appropriate.
-- [ ] Add mocked-agent/API integration tests for each workflow and failure path.
-- [ ] Verify errors propagate safely and appointment state remains consistent.
-**Acceptance criteria:** supported appointment flows work end-to-end through API; outcomes are accurate; success/failure tests pass.
+**Implemented:** The booking specialist now has availability lookup plus book/cancel/reschedule tools. Its instructions require exact details, clarification before tool use, explicit confirmation before mutation, faithful reporting of tool outcomes, and no disclosure of patient IDs. Existing tools enforce patient-ID matching for cancellation/rescheduling, prevent double booking, return explicit unavailable/missing/data-error outcomes, and preserve state on failed atomic writes. Supervisor clarification prevents incomplete appointment requests from reaching the specialist.
+**Verification:** Added `tests/test_appointment_agent.py` for booking/cancel/reschedule routing, specialist tool availability, confirmation/outcome instructions, and worker response handoff. Existing `tests/test_tools.py` covers booking, cancellation, rescheduling, unavailable/mismatched appointments, persistence, concurrency, and failed writes. API contract/error tests remain in `tests/test_api.py`.
+**Acceptance criteria:** supported appointment intents route to the booking specialist; tool contracts validate required date/ID inputs; mutation results are explicit and state integrity is covered by tests; API errors remain safe.
+**Operational limitation:** confirmation is enforced as an explicit specialist instruction to the LLM, not as a separate deterministic server-side approval token. Production-grade guaranteed confirmation should move to a server-side pending-action/approval state before enabling real patient mutations.
+**Current status:** Completed for the current agent prototype; deterministic server-side confirmation remains a production-hardening item (Phase 10).
 
 ## Phase 6 — Conversation Memory
 **Goal:** Preserve context across turns while isolating patients and sessions.
@@ -206,3 +204,11 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Added `docs/FAQ_CONTENT_GUIDE.md` with approved-source requirements, JSON schema example, operator update/review steps, and test commands.
 - Added synthetic appointment fixture under `tests/fixtures/` (fabricated doctors, dates, availability states, and test-only patient IDs) plus a fixture integrity test. The live `data/doctor_availability.csv` was not edited; fixture README warns not to use it as production data.
 - Clinic-specific FAQ facts remain unprovided, so Phase 4 stays in progress until authorized facts are entered and reviewed.
+
+### Phase 5 execution entry — 2026-09-29
+- Updated the booking specialist's toolset to include availability lookup and strengthened its operating contract: ask for missing/ambiguous details, request explicit patient confirmation before mutations, report tool outcomes accurately, and never expose patient IDs.
+- Added `tests/test_appointment_agent.py` to verify book/cancel/reschedule supervisor routing, all appointment tools exposed to the booking specialist, confirmation/outcome instructions, and worker handoff. Existing tool tests verify persistent mutations and failure paths; existing API tests verify request validation and safe failures.
+- Focused command: `.\\.venv\\Scripts\\python.exe -m pytest tests\\test_appointment_agent.py tests\\test_tools.py tests\\test_api.py -q -p no:cacheprovider` — 21 passed, 1 Starlette/httpx deprecation warning.
+- Full command: `.\\.venv\\Scripts\\python.exe -m pytest -q -p no:cacheprovider` — 32 passed, 73 warnings, exit code 0. Warnings include Starlette/httpx and Pydantic deprecations; Windows pytest temporary-directory cleanup raised a shutdown-time `PermissionError` after successful completion.
+- Limitation: confirmation is currently an LLM specialist instruction, not a deterministic server-side approval gate. Before production use with real patient records, implement a server-side pending-action confirmation state.
+- Phase 5 prototype scope completed; next phase is Phase 6 API/UI conversation-memory verification.

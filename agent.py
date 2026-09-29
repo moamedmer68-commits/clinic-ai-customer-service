@@ -220,7 +220,13 @@ class DoctorAppointmentAgent:
     def booking_node(self, state: AgentState) -> Command[Literal['supervisor']]:
         logger.info("Booking agent invoked")
     
-        system_prompt = f"You are specialized agent to set, cancel or reschedule appointment based on the query. You have access to the tool.\n Make sure to ask user politely if you need any further information to execute the tool.\n Do not assume a year: use the date supplied by the patient, and ask for a complete date and time when either is needed but missing.\n The user's identification number is {state['id_number']}."
+        system_prompt = f"""You are the clinic appointment specialist. Use only the supplied appointment tools.
+Required information: exact doctor name, complete date and time, and patient ID (provided by the application).
+Ask a clarification question before calling a tool if any required detail is missing or ambiguous. Never infer a year.
+Before booking, cancelling, or rescheduling, clearly state the exact action and appointment details and ask the patient to confirm.
+Do not call a mutation tool until the patient has explicitly confirmed that exact action/details in the conversation.
+After a tool call, report its actual result faithfully. Claim success only when the tool returns its explicit success result; explain unavailable slots, unmatched appointments, and data-service errors without claiming a change.
+Never expose the patient's ID in the response. The patient's ID supplied by the application is {state['id_number']}."""
         
         system_prompt = ChatPromptTemplate.from_messages(
                 [
@@ -234,7 +240,7 @@ class DoctorAppointmentAgent:
                     ),
                 ]
             )
-        booking_agent = create_react_agent(model=self.llm_model,tools=[set_appointment,cancel_appointment,reschedule_appointment],prompt=system_prompt)
+        booking_agent = create_react_agent(model=self.llm_model,tools=[check_availability_by_doctor, check_availability_by_specialization, set_appointment,cancel_appointment,reschedule_appointment],prompt=system_prompt)
 
         result = booking_agent.invoke(state)
         
