@@ -226,3 +226,10 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Added synthetic retrieval tests and `docs/RAG_KNOWLEDGE_BASE.md` describing source boundaries, testing, extension criteria, and limitations.
 - Focused tests: 8 passed. Full suite: 37 passed, 163 warnings. Warnings include Starlette/httpx and Pydantic deprecations; Windows pytest temp cleanup PermissionError occurs at shutdown after success.
 - Phase 7 remains in progress: clinic FAQ data is empty and no approved clinic corpus or representative evaluation set is available. Current implementation is lexical retrieval, not an embedding/vector database; do not claim production RAG readiness.
+
+
+### CI failure diagnosis and remediation - 2026-09-29
+- Inspected GitHub Actions run 5 job logs: dependency installation failed before pytest because `pywin32==308` was unconditionally included while CI runs on Ubuntu (`No matching distribution found`). The test step was skipped. This was a platform marker defect in the shared requirements file, not a failing application test.
+- Added Windows-only environment markers for `pywin32` and `win32_setctime`.
+- Improved `.github/workflows/ci.yml`: concurrency cancellation, isolated runner-temp SQLite path, 30-minute timeout, binary-wheel preference, dependency consistency check (`pip check`), compile check, then test suite.
+- Local validation: compile check passed; full pytest suite 37 passed (163 existing dependency deprecation warnings). Local venv has no pip module, so `pip check` could not be run locally; workflow will execute it after fresh pip installation.

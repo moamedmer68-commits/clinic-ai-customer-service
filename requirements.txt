@@ -161,7 +161,7 @@ pyreadline3==3.5.4
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 pytz==2025.1
-pywin32==308
+pywin32==308; sys_platform == "win32"
 PyYAML==6.0.2
 pyzmq==26.2.1
 referencing==0.36.2
@@ -209,7 +209,7 @@ webencodings==0.5.1
 websocket-client==1.8.0
 websockets==14.2
 wikipedia==1.4.0
-win32_setctime==1.2.0
+win32_setctime==1.2.0; sys_platform == "win32"
 wrapt==1.17.2
 yarl==1.18.3
 yfinance==0.2.52
