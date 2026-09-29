@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   test:
-    name: Tests (Python 3.11 / Ubuntu)
+    name: Tests (Python 3.12 / Ubuntu)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
