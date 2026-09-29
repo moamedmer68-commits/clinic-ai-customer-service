@@ -41,6 +41,12 @@ class TestConversationMemory(unittest.TestCase):
         other_saved = graph.get_state(other_config).values["messages"]
         self.assertEqual([message.content for message in other_saved], ["separate", "checkpointed"])
         self.assertEqual([message.content for message in graph.get_state(config).values["messages"]], ["hello", "checkpointed"])
+        
+        # Test multi-turn deduplication logic (add_messages handles IDs properly)
+        graph.invoke({"messages": [HumanMessage(content="follow-up")]}, config=config)
+        updated_saved = graph.get_state(config).values["messages"]
+        self.assertEqual([message.content for message in updated_saved], ["hello", "checkpointed", "follow-up", "checkpointed"])
+        
         connection.close()
 
 if __name__ == "__main__":

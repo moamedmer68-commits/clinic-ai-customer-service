@@ -1,8 +1,10 @@
 import os
 import shutil
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 import pandas as pd
 
 from data_models.models import DateModel, DateTimeModel, IdentificationNumberModel
@@ -210,6 +212,86 @@ class TestAppointmentTools(unittest.TestCase):
         row = df[df["date_slot"] == "08-08-2024 08:00"].iloc[0]
         self.assertTrue(row["is_available"])
         self.assertTrue(pd.isna(row["patient_to_attend"]))
+
+    def test_10_reschedule_moves_booking_and_persists_after_reload(self):
+        result = reschedule_appointment.invoke({
+            "old_date": DateTimeModel(date="08-08-2024 10:00"),
+            "new_date": DateTimeModel(date="08-08-2024 18:00"),
+            "id_number": IdentificationNumberModel(id=1000042),
+            "doctor_name": "john doe",
+        })
+        self.assertEqual(result, "Successfully rescheduled for the desired time")
+        reloaded = pd.read_csv(self.temp_csv)
+        old_row = reloaded[reloaded["date_slot"] == "08-08-2024 10:00"].iloc[0]
+        new_row = reloaded[reloaded["date_slot"] == "08-08-2024 18:00"].iloc[0]
+        self.assertTrue(old_row["is_available"])
+        self.assertTrue(pd.isna(old_row["patient_to_attend"]))
+        self.assertFalse(new_row["is_available"])
+        self.assertEqual(int(new_row["patient_to_attend"]), 1000042)
+
+    def test_11_reschedule_unavailable_slot_keeps_old_booking(self):
+        data = pd.read_csv(self.temp_csv)
+        data.loc[data["date_slot"] == "08-08-2024 08:00", ["is_available", "patient_to_attend"]] = [False, 7654321]
+        data.to_csv(self.temp_csv, index=False)
+        result = reschedule_appointment.invoke({
+            "old_date": DateTimeModel(date="08-08-2024 10:00"),
+            "new_date": DateTimeModel(date="08-08-2024 08:00"),
+            "id_number": IdentificationNumberModel(id=1000042),
+            "doctor_name": "john doe",
+        })
+        self.assertEqual(result, "Not available slots in the desired period")
+        row = pd.read_csv(self.temp_csv).query("date_slot == '08-08-2024 10:00'").iloc[0]
+        self.assertFalse(row["is_available"])
+        self.assertEqual(int(row["patient_to_attend"]), 1000042)
+
+    def test_12_duplicate_or_malformed_data_is_rejected_without_mutation(self):
+        malformed = pd.read_csv(self.temp_csv).drop(columns=["specialization"])
+        malformed.to_csv(self.temp_csv, index=False)
+        result = set_appointment.invoke({
+            "desired_date": DateTimeModel(date="08-08-2024 08:00"),
+            "id_number": IdentificationNumberModel(id=1234567),
+            "doctor_name": "john doe",
+        })
+        self.assertEqual(result, "Appointment data is unavailable. Please try again later.")
+
+        self.setUp()
+        duplicated = pd.concat([pd.read_csv(self.temp_csv)] * 2, ignore_index=True)
+        duplicated.to_csv(self.temp_csv, index=False)
+        self.assertEqual(
+            check_availability_by_doctor.invoke({"desired_date": DateModel(date="08-08-2024"), "doctor_name": "john doe"}),
+            "Appointment data is unavailable. Please try again later.",
+        )
+
+    def test_13_concurrent_booking_allows_only_one_patient(self):
+        barrier = threading.Barrier(2)
+        results = []
+
+        def book(patient_id):
+            barrier.wait()
+            results.append(set_appointment.invoke({
+                "desired_date": DateTimeModel(date="08-08-2024 08:00"),
+                "id_number": IdentificationNumberModel(id=patient_id),
+                "doctor_name": "john doe",
+            }))
+
+        threads = [threading.Thread(target=book, args=(1234567,)), threading.Thread(target=book, args=(7654321,))]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(results.count("Successfully done"), 1)
+        self.assertEqual(results.count("No available appointments for that particular case"), 1)
+
+    def test_14_failed_atomic_write_preserves_existing_csv(self):
+        with patch("toolkit.toolkits.os.replace", side_effect=OSError("disk full")):
+            result = set_appointment.invoke({
+                "desired_date": DateTimeModel(date="08-08-2024 08:00"),
+                "id_number": IdentificationNumberModel(id=1234567),
+                "doctor_name": "john doe",
+            })
+        self.assertEqual(result, "Appointment data is unavailable. Please try again later.")
+        row = pd.read_csv(self.temp_csv).query("date_slot == '08-08-2024 08:00'").iloc[0]
+        self.assertTrue(row["is_available"])
 
 
 if __name__ == "__main__":
