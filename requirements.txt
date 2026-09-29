@@ -94,6 +94,7 @@ langchain-text-splitters==0.3.6
 langchainhub==0.1.21
 langgraph==0.2.70
 langgraph-checkpoint==2.0.12
+langgraph-checkpoint-sqlite==2.0.10
 langgraph-sdk==0.1.51
 langsmith==0.3.8
 loguru==0.7.3

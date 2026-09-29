@@ -129,11 +129,11 @@ class DoctorAppointmentAgent:
             goto="supervisor",
         )
 
-    def workflow(self):
+    def workflow(self, checkpointer=None):
         self.graph = StateGraph(AgentState)
         self.graph.add_node("supervisor", self.supervisor_node)
         self.graph.add_node("information_node", self.information_node)
         self.graph.add_node("booking_node", self.booking_node)
         self.graph.add_edge(START, "supervisor")
-        self.app = self.graph.compile()
+        self.app = self.graph.compile(checkpointer=checkpointer)
         return self.app

@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import uuid
 
 API_URL = "http://127.0.0.1:8003/execute" 
 
@@ -11,7 +12,7 @@ query = st.text_area("Enter your query:", "Can you check if a dentist is availab
 if st.button("Submit Query"):
     if user_id and query:
         try:
-            response = requests.post(API_URL, json={'messages': query, 'id_number': int(user_id)},verify=False)
+            response = requests.post(API_URL, json={'messages': query, 'id_number': int(user_id), 'session_id': st.session_state.session_id},verify=False)
             if response.status_code == 200:
                 st.success("Response Received:")
                 st.write(response.json()["messages"])
