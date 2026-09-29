@@ -25,7 +25,7 @@ This document is the source of truth for project scope, phase order, implementat
 | 1 | Data Integrity | Completed — acceptance review, integrity hardening, and tests verified |
 | 2 | Backend Reliability & Error Handling | Completed — API contract, safe errors, correlation, and tests verified |
 | 3 | Customer Service Core & Intent Routing | Completed — explicit intent routing, clarification, bounded execution, and mocked routing tests verified |
-| 4 | FAQ Agent | Not started as a dedicated, tested FAQ capability |
+| 4 | FAQ Agent | In progress — dedicated grounded FAQ node and tests implemented; approved clinic FAQ facts still needed |
 | 5 | Appointment Agent Integration | In progress — appointment tools exist; end-to-end verification pending |
 | 6 | Conversation Memory | In progress — SQLite checkpointer and unit tests exist; API/UI verification pending |
 | 7 | RAG Knowledge Base | Not started |
@@ -83,13 +83,17 @@ This document is the source of truth for project scope, phase order, implementat
 
 ## Phase 4 — FAQ Agent
 **Goal:** Answer clinic service questions from approved, maintained clinic information.
+**Data review (2026-09-29):** `data/` contains `doctor_availability.csv` (columns: `date_slot`, `specialization`, `doctor_name`, `is_available`, `patient_to_attend`; 4,280 data rows) and no authoritative clinic FAQ facts. The appointment CSV is used by appointment availability/booking workflows and is not treated as a source for clinic hours, address, fees, insurance, or policies. No patient row values were copied into FAQ content.
+**Implemented:** Dedicated `faq_node` receives FAQ intent; it reads approved entries from `data/clinic_faq.json`, matches question/keyword terms, returns configured answer text, and safely defers unknown questions. Medical-advice terms trigger a boundary response. FAQ routing is distinct from availability routing. The JSON file is currently an empty list because clinic facts have not been provided/verified.
 **Tasks:**
-- [ ] Define FAQ scope and authoritative content (hours, location, services, policies, preparation, payment/insurance if applicable).
-- [ ] Implement dedicated FAQ capability with boundaries and fallback for absent information.
-- [ ] Ground answers; do not invent clinic policies or provide unsupported medical advice.
-- [ ] Test known answers, paraphrases, missing answers, and out-of-scope medical questions.
-- [ ] Integrate FAQ intent into supervisor; document content update process.
-**Acceptance criteria:** answers supported by configured source content; unknown answers transparently deferred; routing/tests pass.
+- [x] Define FAQ source format and keep it separate from appointment data.
+- [x] Implement dedicated FAQ capability with boundaries and fallback for absent information.
+- [x] Ground answers in configured content; do not invent clinic policies or provide unsupported medical advice.
+- [x] Test known answers, paraphrases, missing answers, medical-advice boundary, and supervisor routing.
+- [ ] Populate and verify authoritative FAQ content (hours, location, services, policies, preparation, payment/insurance if applicable).
+- [ ] Document the content update process for clinic operators.
+**Acceptance criteria:** answers supported by configured source content; unknown answers transparently deferred; routing/tests pass; clinic content approved. The final content approval criterion remains open.
+**Verification:** `python -m pytest tests/test_faq.py tests/test_routing.py -q -p no:cacheprovider` — 8 passed. Full `python -m pytest -q -p no:cacheprovider` — 29 passed, 73 warnings. A pytest temporary-directory cleanup emitted a Windows `PermissionError` during interpreter shutdown after tests; pytest exit code was 0. Existing Starlette/httpx and Pydantic deprecation warnings remain.
 ## Phase 5 — Appointment Agent Integration
 **Goal:** Deliver complete appointment workflows through the agent/API using Phase 1 integrity guarantees.
 **Implemented/evidence observed:** lookup, booking, cancellation, and rescheduling tools exist in toolkit/toolkits.py; booking agent/node exists.
@@ -190,3 +194,15 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Phase 1 limitation: lock-file CSV coordination is intended for a single host/local prototype; use a transactional database for multi-host or production concurrency.
 - No commit or push performed. Existing unrelated modifications and untracked scratch files were preserved.
 - Next phase: Phase 3 — Customer Service Core & Intent Routing.
+
+### Phase 4 execution entry — 2026-09-29
+- Reviewed `data/`: appointment schedule CSV schema and row count only; did not expose/copy patient row data. No verified clinic FAQ facts existed. Created `data/clinic_faq.json` as an empty approved-content store rather than inventing clinic policies.
+- Implemented a dedicated FAQ node, FAQ-specific supervisor routing, keyword/question matching against configured JSON, safe unknown-answer fallback, and medical-advice boundary response. Added `tests/test_faq.py`.
+- Focused tests: 8 passed. Full suite: 29 passed, 73 warnings, exit code 0. Windows pytest cleanup emitted a shutdown-time permission warning after successful test completion.
+- Phase remains in progress until clinic-specific facts are supplied/approved and content update guidance is documented. No commit or push.
+
+
+### Phase 4 continuation — 2026-09-29
+- Added `docs/FAQ_CONTENT_GUIDE.md` with approved-source requirements, JSON schema example, operator update/review steps, and test commands.
+- Added synthetic appointment fixture under `tests/fixtures/` (fabricated doctors, dates, availability states, and test-only patient IDs) plus a fixture integrity test. The live `data/doctor_availability.csv` was not edited; fixture README warns not to use it as production data.
+- Clinic-specific FAQ facts remain unprovided, so Phase 4 stays in progress until authorized facts are entered and reviewed.

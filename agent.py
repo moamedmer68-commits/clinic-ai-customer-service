@@ -1,5 +1,7 @@
+import json
 import logging
 import re
+from pathlib import Path
 from typing import Any, Literal
 from langgraph.types import Command
 from langgraph.graph.message import add_messages
@@ -30,7 +32,7 @@ class AgentState(TypedDict):
 
 
 INTENT_DESTINATIONS = {
-    "faq": "information_node",
+    "faq": "faq_node",
     "availability": "information_node",
     "book": "booking_node",
     "cancel": "booking_node",
@@ -85,13 +87,13 @@ def _last_message_is_worker_response(messages: list[Any]) -> bool:
     if not messages:
         return False
     last_message = messages[-1]
-    return isinstance(last_message, AIMessage) and getattr(last_message, "name", None) in INTENT_DESTINATIONS.values()
+    return isinstance(last_message, AIMessage) and getattr(last_message, "name", None) in {"faq_node", "information_node", "booking_node"}
 
 class DoctorAppointmentAgent:
     def __init__(self, llm_model=None):
         self.llm_model = llm_model or LLMModel().get_model()
     
-    def supervisor_node(self, state: AgentState) -> Command[Literal['information_node', 'booking_node', '__end__']]:
+    def supervisor_node(self, state: AgentState) -> Command[Literal['faq_node', 'information_node', 'booking_node', '__end__']]:
         logger.debug("Supervisor evaluating request")
         
         # Each worker response returns here. End that execution rather than allowing
@@ -145,6 +147,44 @@ class DoctorAppointmentAgent:
 
         update["next"] = goto
         return Command(goto=goto, update=update)
+
+    def faq_node(self, state: AgentState) -> Command[Literal["supervisor"]]:
+        """Answer clinic FAQs only when supported by configured clinic content."""
+        query = (state.get("query") or _latest_human_query(state.get("messages", []))).strip()
+        normalized = query.casefold()
+        medical_terms = {"diagnose", "diagnosis", "symptom", "symptoms", "pain", "swollen", "bleeding", "infection", "medicine", "medication", "dosage", "treatment"}
+        query_terms = set(re.findall(r"[a-z0-9]+", normalized))
+        if query_terms & medical_terms:
+            answer = ("I can share clinic service information, but I can’t diagnose symptoms or recommend "
+                      "treatment. Please contact a qualified healthcare professional for medical advice.")
+        else:
+            faq_path = Path(__file__).resolve().parent / "data" / "clinic_faq.json"
+            try:
+                entries = json.loads(faq_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                logger.exception("Unable to load clinic FAQ content")
+                entries = []
+            best_entry = None
+            best_score = 0
+            for entry in entries if isinstance(entries, list) else []:
+                if not isinstance(entry, dict) or not isinstance(entry.get("answer"), str):
+                    continue
+                terms = set()
+                for field in ("question", "keywords"):
+                    value = entry.get(field, "")
+                    if isinstance(value, str):
+                        terms.update(re.findall(r"[a-z0-9]+", value.casefold()))
+                    elif isinstance(value, list):
+                        terms.update(token for item in value if isinstance(item, str)
+                                     for token in re.findall(r"[a-z0-9]+", item.casefold()))
+                score = len(query_terms & terms)
+                if score > best_score:
+                    best_entry, best_score = entry, score
+            answer = best_entry["answer"].strip() if best_entry and best_entry["answer"].strip() else (
+                "I don’t have a verified answer to that clinic question yet. Please contact the clinic directly "
+                "or ask about doctor availability or appointment booking."
+            )
+        return Command(update={"messages": [AIMessage(content=answer, name="faq_node")]}, goto="supervisor")
 
     def information_node(self, state: AgentState) -> Command[Literal['supervisor']]:
         logger.info("Information agent invoked")
@@ -210,6 +250,7 @@ class DoctorAppointmentAgent:
     def workflow(self, checkpointer=None):
         self.graph = StateGraph(AgentState)
         self.graph.add_node("supervisor", self.supervisor_node)
+        self.graph.add_node("faq_node", self.faq_node)
         self.graph.add_node("information_node", self.information_node)
         self.graph.add_node("booking_node", self.booking_node)
         self.graph.add_edge(START, "supervisor")

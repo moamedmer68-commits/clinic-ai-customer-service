@@ -1,0 +1,11 @@
+date_slot,specialization,doctor_name,is_available,patient_to_attend
+01-10-2026 09:00,general_dentist,dr_test_amina,True,
+01-10-2026 09:30,general_dentist,dr_test_amina,False,990001
+01-10-2026 10:00,general_dentist,dr_test_amina,True,
+01-10-2026 10:30,general_dentist,dr_test_amina,False,990002
+02-10-2026 11:00,dermatology,dr_test_omar,True,
+02-10-2026 11:30,dermatology,dr_test_omar,False,990003
+02-10-2026 12:00,dermatology,dr_test_omar,True,
+03-10-2026 13:00,orthodontist,dr_test_sara,True,
+03-10-2026 13:30,orthodontist,dr_test_sara,False,990004
+03-10-2026 14:00,orthodontist,dr_test_sara,True,
