@@ -27,7 +27,7 @@ This document is the source of truth for project scope, phase order, implementat
 | 3 | Customer Service Core & Intent Routing | Completed — explicit intent routing, clarification, bounded execution, and mocked routing tests verified |
 | 4 | FAQ Agent | In progress — dedicated grounded FAQ node and tests implemented; approved clinic FAQ facts still needed |
 | 5 | Appointment Agent Integration | Completed — booking specialist toolset, user-confirmation instructions, routing/integration tests, and existing mutation-integrity tests verified |
-| 6 | Conversation Memory | In progress — SQLite checkpointer and unit tests exist; API/UI verification pending |
+| 6 | Conversation Memory | Completed — API multi-turn/restart persistence, patient/session isolation, Streamlit conversation controls, and operations guidance verified |
 | 7 | RAG Knowledge Base | Not started |
 | 8 | Support & Human Escalation | Not started |
 | 9 | Frontend Chat Experience | In progress — basic Streamlit UI exists; conversational UX work pending |
@@ -105,14 +105,11 @@ This document is the source of truth for project scope, phase order, implementat
 
 ## Phase 6 — Conversation Memory
 **Goal:** Preserve context across turns while isolating patients and sessions.
-**Implemented/evidence observed:** SQLite checkpointer configured in API, session/thread ID helper in utils/session.py, Streamlit session handling, dependency pin, and tests in tests/test_memory.py for isolation and persistence.
-**Remaining tasks:**
-- [ ] Verify multi-turn memory through actual FastAPI requests, not only isolated graph tests.
-- [ ] Verify Streamlit session creation, continuation, and new-conversation behavior.
-- [ ] Confirm patient/session isolation; avoid raw patient identifiers in thread IDs/logs.
-- [ ] Define retention, deletion, backup, and SQLite concurrency expectations.
-- [ ] Test restart persistence and malformed/expired sessions.
-**Acceptance criteria:** intended multi-turn context persists; sessions are isolated; restart behavior tested; retention/privacy documented.
+**Implemented:** The API uses a stable SHA-256 thread key derived from patient ID and session ID; raw identifiers are not used as checkpoint keys or logged. Streamlit now creates a random session ID, displays chat turns, continues the same session, and offers a new-conversation control. SQLite remains the configured checkpointer.
+**Verified:** API-level tests exercise consecutive turns, patient/session isolation, and persistence across app restart using a file-backed SQLite checkpointer. Existing unit coverage verifies stable/scoped non-reversible-looking thread keys. Session IDs are bounded by API schema; no expiration is implemented.
+**Operations:** `docs/CONVERSATION_MEMORY.md` documents persistence location, no-expiry prototype behavior, deletion, backup, privacy, single-process SQLite limits, and manual UI acceptance scenarios. Per-patient deletion and automated retention are not implemented; clinic policy must be set before real patient data use.
+**Acceptance criteria:** [x] multi-turn context persists; [x] patient/session isolation; [x] restart behavior; [x] retention/deletion/backup/concurrency guidance; [x] UI controls/manual acceptance documented.
+**Current status:** Completed for prototype scope. Multi-worker/multi-host SQLite use and automated retention remain production limitations (Phase 10).
 
 ## Phase 7 — RAG Knowledge Base
 **Goal:** Retrieve current clinic knowledge with traceable grounding for FAQ/policy answers.
@@ -161,6 +158,15 @@ This document is the source of truth for project scope, phase order, implementat
 ## Execution log
 
 Append a dated entry after each work session: phase, files changed, exact test commands/results, warnings, unresolved issues, and next action. Do not mark a phase complete until all acceptance criteria are satisfied.
+
+### Phase 6 execution entry — 2026-09-29
+- Updated `streamlit_ui.py` with random session initialization, visible user/assistant transcript, continued API session, new-conversation control, input validation, request timeout, and safe request failure display. Removed `verify=False`.
+- Expanded `tests/test_memory.py` with FastAPI-level multi-turn context, patient/session isolation, and file-backed SQLite persistence across app restart. Tests use a deterministic local graph; no external LLM/API calls.
+- Added `docs/CONVERSATION_MEMORY.md` documenting thread scoping, persistence, no automatic expiry, deletion, backup, privacy, SQLite single-process limitations, and manual UI acceptance steps.
+- Focused verification: `.\\.venv\\Scripts\\python.exe -m pytest tests\\test_memory.py tests\\test_api.py -q -p no:cacheprovider` — 8 passed. Warnings: Starlette/httpx and Pydantic deprecations. Pytest emitted a Windows temp-directory `PermissionError` during interpreter shutdown after passing.
+- Full verification: `.\\.venv\\Scripts\\python.exe -m pytest -q -p no:cacheprovider` — 33 passed, 163 warnings, exit code 0. Same known dependency deprecations and post-test Windows temp cleanup warning.
+- Remaining constraints: UI manual scenarios are documented but not automated because Streamlit UI runtime/browser interaction is not configured in this environment. No automatic retention or per-patient deletion; establish clinic retention policy before real patient data. SQLite intended for single-process/single-host prototype.
+
 
 ### Phase 3 execution entry - 2026-09-29
 - Changed `agent.py`, `prompt_library/prompt.py`, `tests/test_routing.py`, and this roadmap. The existing supervisor and two existing specialist nodes were retained. Structured routing now classifies `faq`, `availability`, `book`, `cancel`, `reschedule`, or `fallback`; supported intents use the existing nodes and fallback returns a safe clarification.
