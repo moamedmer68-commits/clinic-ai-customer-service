@@ -14,11 +14,10 @@ if st.button("Submit Query"):
             response = requests.post(API_URL, json={'messages': query, 'id_number': int(user_id)},verify=False)
             if response.status_code == 200:
                 st.success("Response Received:")
-                print("**********my response******************")
-                print(response.json())
                 st.write(response.json()["messages"])
             else:
-                st.error(f"Error {response.status_code}: Could not process the request.")
+                error_message = response.json().get("error", "Could not process the request.")
+                st.error(f"Error {response.status_code}: {error_message}")
         except Exception as e:
             st.error(f"Exception occurred: {e}")
     else:

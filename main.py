@@ -1,37 +1,48 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from agent import DoctorAppointmentAgent
-from langchain_core.messages import HumanMessage
+import logging
 import os
 
-os.environ.pop("SSL_CERT_FILE", None)
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from langchain_core.messages import HumanMessage
 
+from agent import DoctorAppointmentAgent
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Define Pydantic model to accept request body
 class UserQuery(BaseModel):
-    id_number: int
-    messages: str
+    id_number: int = Field(..., ge=1000000, le=99999999)
+    messages: str = Field(..., min_length=1)
 
 agent = DoctorAppointmentAgent()
+app_graph = agent.workflow()
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning("Request validation failed for %s", request.url.path)
+    return JSONResponse(status_code=422, content={"error": "Invalid request", "details": exc.errors()})
+
+@app.exception_handler(Exception)
+async def application_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled application error on %s", request.url.path)
+    return JSONResponse(status_code=500, content={"error": "The request could not be processed."})
 
 @app.post("/execute")
 def execute_agent(user_input: UserQuery):
-    app_graph = agent.workflow()
-    
-    # Prepare agent state as expected by the workflow
-    input = [
-        HumanMessage(content=user_input.messages)
-    ]
+    logger.info("Processing agent request")
     query_data = {
-        "messages": input,
+        "messages": [HumanMessage(content=user_input.messages)],
         "id_number": user_input.id_number,
         "next": "",
         "query": "",
         "current_reasoning": "",
     }
-    #config = {"configurable": {"thread_id": "1", "recursion_limit": 100}}  
-
-    response = app_graph.invoke(query_data,config={"recursion_limit": 20})
+    response = app_graph.invoke(query_data, config={"recursion_limit": 20})
     return {"messages": response["messages"]}

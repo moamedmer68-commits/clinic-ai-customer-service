@@ -1,3 +1,4 @@
+import logging
 from typing import Literal, List, Any
 from langchain_core.tools import tool
 from langgraph.types import Command
@@ -10,6 +11,8 @@ from langchain_core.messages import HumanMessage, AIMessage
 from prompt_library.prompt import system_prompt
 from utils.llms import LLMModel
 from toolkit.toolkits import *
+
+logger = logging.getLogger(__name__)
 
 class Router(TypedDict):
     next: Literal["information_node", "booking_node", "FINISH"]
@@ -28,40 +31,30 @@ class DoctorAppointmentAgent:
         self.llm_model=llm_model.get_model()
     
     def supervisor_node(self, state: AgentState) -> Command[Literal['information_node', 'booking_node', '__end__']]:
-        print("**************************below is my state right after entering****************************")
-        print(state)
+        logger.debug("Supervisor evaluating request")
         
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"user's identification number is {state['id_number']}"},
         ] + state["messages"]
         
-        print("***********************this is my message*****************************************")
-        print(messages)
         
         # query = state['messages'][-1].content if state["messages"] else ""
         query = ''
         if len(state['messages']) == 1:
             query = state['messages'][0].content
         
-        print("************below is my query********************")    
-        print(query)
         
         response = self.llm_model.with_structured_output(Router).invoke(messages)
         
         goto = response["next"]
+        logger.info("Supervisor routed request to %s", goto)
         
-        print("********************************this is my goto*************************")
-        print(goto)
         
-        print("********************************")
-        print(response["reasoning"])
             
         if goto == "FINISH":
             goto = END
             
-        print("**************************below is my state****************************")
-        print(state)
         
         if query:
             return Command(goto=goto, update={'next': goto, 
@@ -74,7 +67,7 @@ class DoctorAppointmentAgent:
                     )
 
     def information_node(self, state: AgentState) -> Command[Literal['supervisor']]:
-        print("*****************called information node************")
+        logger.info("Information agent invoked")
     
         system_prompt = "You are specialized agent to provide information related to availability of doctors or any FAQs related to hospital based on the query. You have access to the tool.\n Make sure to ask user politely if you need any further information to execute the tool.\n For your information, Always consider current year is 2024."
         
@@ -106,7 +99,7 @@ class DoctorAppointmentAgent:
         )
 
     def booking_node(self, state: AgentState) -> Command[Literal['supervisor']]:
-        print("*****************called booking node************")
+        logger.info("Booking agent invoked")
     
         system_prompt = "You are specialized agent to set, cancel or reschedule appointment based on the query. You have access to the tool.\n Make sure to ask user politely if you need any further information to execute the tool.\n For your information, Always consider current year is 2024."
         
