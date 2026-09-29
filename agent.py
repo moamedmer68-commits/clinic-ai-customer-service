@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from prompt_library.prompt import system_prompt
 from utils.llms import LLMModel
 from toolkit.toolkits import *
+from knowledge_base import load_faq, retrieve_faq
 
 logger = logging.getLogger(__name__)
 
@@ -159,28 +160,8 @@ class DoctorAppointmentAgent:
                       "treatment. Please contact a qualified healthcare professional for medical advice.")
         else:
             faq_path = Path(__file__).resolve().parent / "data" / "clinic_faq.json"
-            try:
-                entries = json.loads(faq_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                logger.exception("Unable to load clinic FAQ content")
-                entries = []
-            best_entry = None
-            best_score = 0
-            for entry in entries if isinstance(entries, list) else []:
-                if not isinstance(entry, dict) or not isinstance(entry.get("answer"), str):
-                    continue
-                terms = set()
-                for field in ("question", "keywords"):
-                    value = entry.get(field, "")
-                    if isinstance(value, str):
-                        terms.update(re.findall(r"[a-z0-9]+", value.casefold()))
-                    elif isinstance(value, list):
-                        terms.update(token for item in value if isinstance(item, str)
-                                     for token in re.findall(r"[a-z0-9]+", item.casefold()))
-                score = len(query_terms & terms)
-                if score > best_score:
-                    best_entry, best_score = entry, score
-            answer = best_entry["answer"].strip() if best_entry and best_entry["answer"].strip() else (
+            match = retrieve_faq(query, load_faq(faq_path))
+            answer = match.answer if match else (
                 "I don’t have a verified answer to that clinic question yet. Please contact the clinic directly "
                 "or ask about doctor availability or appointment booking."
             )

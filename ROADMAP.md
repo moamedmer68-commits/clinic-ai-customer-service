@@ -218,3 +218,11 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Full command: `.\\.venv\\Scripts\\python.exe -m pytest -q -p no:cacheprovider` — 32 passed, 73 warnings, exit code 0. Warnings include Starlette/httpx and Pydantic deprecations; Windows pytest temporary-directory cleanup raised a shutdown-time `PermissionError` after successful completion.
 - Limitation: confirmation is currently an LLM specialist instruction, not a deterministic server-side approval gate. Before production use with real patient records, implement a server-side pending-action confirmation state.
 - Phase 5 prototype scope completed; next phase is Phase 6 API/UI conversation-memory verification.
+
+
+### Phase 7 implementation entry - 2026-09-29
+- Added `knowledge_base.py`: deterministic FAQ retrieval over approved JSON content, schema filtering, token coverage scoring, evidence threshold, and fail-closed loading. Integrated it into the existing FAQ node; verified-answer fallback remains.
+- Legacy notebook availability queries use structured CSV filtering. Runtime availability and mutations remain centralized in typed `toolkit/toolkits.py` tools; no semantic/vector retrieval is used for live schedule decisions. Live appointment CSV was not modified.
+- Added synthetic retrieval tests and `docs/RAG_KNOWLEDGE_BASE.md` describing source boundaries, testing, extension criteria, and limitations.
+- Focused tests: 8 passed. Full suite: 37 passed, 163 warnings. Warnings include Starlette/httpx and Pydantic deprecations; Windows pytest temp cleanup PermissionError occurs at shutdown after success.
+- Phase 7 remains in progress: clinic FAQ data is empty and no approved clinic corpus or representative evaluation set is available. Current implementation is lexical retrieval, not an embedding/vector database; do not claim production RAG readiness.
