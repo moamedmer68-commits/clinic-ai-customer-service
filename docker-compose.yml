@@ -16,6 +16,7 @@ services:
       CLINIC_FAQ_PATH: /app/runtime-data/clinic_faq.json
       CHECKPOINT_DB_PATH: /app/runtime-data/conversations.sqlite3
       HANDOFF_DB_PATH: /app/runtime-data/human_handoffs.sqlite3
+      PENDING_ACTION_DB_PATH: /app/runtime-data/pending_actions.sqlite3
       FAQ_RAG_INDEX_PATH: /app/runtime-data/faq_index
     volumes:
       - ./runtime-data:/app/runtime-data

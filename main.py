@@ -12,13 +12,23 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 from pydantic import BaseModel, Field
 
 load_dotenv()
 
 from agent import DoctorAppointmentAgent
+from data_models.models import DateTimeModel, IdentificationNumberModel
+from support.pending_actions import (
+    cancel_pending_action,
+    claim_pending_action,
+    classify_confirmation,
+    finish_pending_action,
+    format_pending_action,
+    get_pending_action,
+)
+from toolkit.toolkits import cancel_appointment, reschedule_appointment, set_appointment
 from utils.session import make_thread_id
 
 
@@ -29,6 +39,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9._:-]{1,64}")
+_SUCCESS_RESULTS = {
+    "book": "Successfully done",
+    "cancel": "Successfully cancelled",
+    "reschedule": "Successfully rescheduled for the desired time",
+}
 
 
 class UserQuery(BaseModel):
@@ -73,6 +88,69 @@ def _build_graph() -> tuple[object, sqlite3.Connection]:
         raise
 
 
+def _perform_pending_action(action: dict, patient_id: int) -> str:
+    """Execute only the validated, stored action payload—not fresh LLM arguments."""
+    payload = action["payload"]
+    operation = action["operation"]
+    identification = IdentificationNumberModel(id=patient_id)
+    if operation == "book":
+        return set_appointment.invoke({
+            "desired_date": DateTimeModel(date=payload["desired_date"]),
+            "id_number": identification,
+            "doctor_name": payload["doctor_name"],
+        })
+    if operation == "cancel":
+        return cancel_appointment.invoke({
+            "date": DateTimeModel(date=payload["date"]),
+            "id_number": identification,
+            "doctor_name": payload["doctor_name"],
+        })
+    if operation == "reschedule":
+        return reschedule_appointment.invoke({
+            "old_date": DateTimeModel(date=payload["old_date"]),
+            "new_date": DateTimeModel(date=payload["new_date"]),
+            "id_number": identification,
+            "doctor_name": payload["doctor_name"],
+        })
+    raise ValueError("Unsupported pending appointment action")
+
+
+def _record_pending_turn(graph, config: dict, user_text: str, answer: str) -> dict:
+    """Persist the confirmation turn in the existing conversation checkpoint."""
+    try:
+        graph.update_state(
+            config,
+            {
+                "messages": [
+                    HumanMessage(content=user_text),
+                    AIMessage(content=answer, name="booking_node"),
+                ],
+                "next": "",
+                "query": user_text,
+                "current_reasoning": "Appointment mutation handled by deterministic confirmation service.",
+                "escalation_case_id": "",
+                "escalation_status": "",
+                "escalation_trigger": "",
+            },
+        )
+        snapshot = graph.get_state(config)
+        values = getattr(snapshot, "values", None)
+        if isinstance(values, dict):
+            return values
+    except Exception:
+        # A successful appointment write must not be re-executed just because
+        # persisting the displayed response failed. The action has already been
+        # claimed and finalized in the pending-action database.
+        logger.exception("Could not persist deterministic confirmation turn")
+    return {
+        "messages": [
+            HumanMessage(content=user_text),
+            AIMessage(content=answer, name="booking_node"),
+        ],
+        "escalation_status": "",
+    }
+
+
 def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -83,7 +161,6 @@ def create_app() -> FastAPI:
             app.state.graph, app.state.checkpoint_connection = _build_graph()
             logger.info("Application dependencies initialized")
         except Exception as exc:
-            # Do not expose secret-bearing provider/configuration details to clients.
             app.state.startup_error = type(exc).__name__
             logger.error("Application started without an available graph: %s", type(exc).__name__)
         yield
@@ -126,7 +203,6 @@ def create_app() -> FastAPI:
     @api.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         logger.warning("Request validation failed on %s", request.url.path, extra={"request_id": request.state.request_id})
-        # Exclude Pydantic's raw input/context fields so patient-provided data is not echoed.
         safe_details = [
             {"loc": error.get("loc"), "msg": error.get("msg"), "type": error.get("type")}
             for error in exc.errors()
@@ -157,23 +233,67 @@ def create_app() -> FastAPI:
             logger.error("Agent request rejected because graph is unavailable", extra={"request_id": request.state.request_id})
             return _error_response(request, 503, "service_unavailable", "Service dependencies are unavailable.")
         session_id = user_input.session_id or str(uuid4())
+        thread_id = make_thread_id(user_input.id_number, session_id)
+        config = {"recursion_limit": 20, "configurable": {"thread_id": thread_id}}
+
         try:
-            # SqliteSaver shares one connection in this single-process prototype; serialize graph
-            # invocations until the checkpointer is moved to a concurrency-safe deployment store.
             with request.app.state.invoke_lock:
-                response = graph.invoke(
-                    {
-                        "messages": [HumanMessage(content=user_input.messages)],
-                        "id_number": user_input.id_number,
-                        "next": "",
-                        "query": "",
-                        "current_reasoning": "",
-                        "escalation_case_id": "",
-                        "escalation_status": "",
-                        "escalation_trigger": "",
-                    },
-                    config={"recursion_limit": 20, "configurable": {"thread_id": make_thread_id(user_input.id_number, session_id)}},
-                )
+                pending = get_pending_action(thread_id)
+                if pending is not None:
+                    decision = classify_confirmation(user_input.messages)
+                    if decision == "affirmative":
+                        claimed = claim_pending_action(thread_id)
+                        if claimed is None:
+                            answer = "No pending appointment action is available to confirm. No appointment change was made."
+                        else:
+                            try:
+                                outcome = _perform_pending_action(claimed, user_input.id_number)
+                                success = outcome == _SUCCESS_RESULTS[claimed["operation"]]
+                                finish_pending_action(
+                                    claimed["action_id"],
+                                    "executed" if success else "failed",
+                                    outcome,
+                                )
+                                if success:
+                                    answer = f"Confirmed and completed: {format_pending_action(claimed)}."
+                                else:
+                                    answer = (
+                                        "Your confirmation was received, but the appointment action could not be completed: "
+                                        f"{outcome}. No appointment change was reported as successful."
+                                    )
+                            except Exception:
+                                logger.exception("Pending appointment action failed", extra={"request_id": request.state.request_id})
+                                finish_pending_action(claimed["action_id"], "failed", "Internal action failure")
+                                answer = "Your confirmation was received, but the appointment action could not be completed. No success is being claimed."
+                    elif decision == "negative":
+                        cancelled = cancel_pending_action(thread_id)
+                        answer = (
+                            "The pending appointment action was cancelled. No appointment change was made."
+                            if cancelled else
+                            "The pending appointment action could not be cancelled. No appointment change was made."
+                        )
+                    else:
+                        answer = (
+                            f"A pending action is awaiting confirmation: {format_pending_action(pending)}. "
+                            "No appointment change has been made. Reply with the exact message YES to confirm, "
+                            "or NO to decline. Other messages do not approve this action."
+                        )
+                    response = _record_pending_turn(graph, config, user_input.messages, answer)
+                else:
+                    response = graph.invoke(
+                        {
+                            "messages": [HumanMessage(content=user_input.messages)],
+                            "id_number": user_input.id_number,
+                            "thread_ref": thread_id,
+                            "next": "",
+                            "query": "",
+                            "current_reasoning": "",
+                            "escalation_case_id": "",
+                            "escalation_status": "",
+                            "escalation_trigger": "",
+                        },
+                        config=config,
+                    )
             messages = [
                 {"type": getattr(message, "type", "message"), "content": message.content}
                 for message in response.get("messages", [])

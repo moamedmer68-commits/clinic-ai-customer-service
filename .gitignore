@@ -8,10 +8,13 @@ data/conversations.sqlite3
 data/conversations.sqlite3-*
 # Locally generated semantic FAQ vector index
 data/faq_index/
-# Local human-handoff queue
+# Local human-handoff and pending-action queues
 data/human_handoffs.sqlite3
 data/human_handoffs.sqlite3-*
+data/pending_actions.sqlite3
+data/pending_actions.sqlite3-*
 # Local deployment data, secrets, approved FAQ data, and persistent databases
 runtime-data/
+.pytest-tmp-*/
 __pycache__/
 *.py[cod]

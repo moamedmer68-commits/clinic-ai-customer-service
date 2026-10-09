@@ -15,6 +15,7 @@ from prompt_library.prompt import system_prompt
 from utils.llms import LLMModel
 from toolkit.toolkits import *
 from knowledge_base import retrieve_semantic_faq
+from support.pending_actions import build_prepare_tool
 from support.handoff import (
     HandoffError,
     create_handoff_case,
@@ -41,6 +42,7 @@ class AgentState(TypedDict):
     escalation_case_id: str
     escalation_status: str
     escalation_trigger: str
+    thread_ref: str
 
 
 INTENT_DESTINATIONS = {
@@ -295,9 +297,10 @@ class DoctorAppointmentAgent:
         system_prompt = f"""You are the clinic appointment specialist. Use only the supplied appointment tools.
 Required information: exact doctor name, complete date and time, and patient ID (provided by the application).
 Ask a clarification question before calling a tool if any required detail is missing or ambiguous. Never infer a year.
-Before booking, cancelling, or rescheduling, clearly state the exact action and appointment details and ask the patient to confirm.
-Do not call a mutation tool until the patient has explicitly confirmed that exact action/details in the conversation.
-After a tool call, report its actual result faithfully. Claim success only when the tool returns its explicit success result; explain unavailable slots, unmatched appointments, and data-service errors without claiming a change.
+You have read-only availability tools and prepare_appointment_change. You do NOT have direct booking, cancellation, or rescheduling tools.
+When the patient requests a fully specified mutation, call prepare_appointment_change with the exact details. This only stores a pending proposal; it does not change the appointment schedule.
+Clearly restate the exact action and details from the tool result, then ask the patient to reply with a separate, exact YES to confirm or NO to decline. Never claim a mutation happened merely because it was prepared or because the user said yes before a pending action existed.
+The API alone executes the stored pending action after an exact confirmation in the same patient/session thread. Do not invent tool results or claim success before the API reports it.
 Never expose the patient's ID in the response. The patient's ID supplied by the application is {state['id_number']}."""
         
         system_prompt = ChatPromptTemplate.from_messages(
@@ -312,7 +315,8 @@ Never expose the patient's ID in the response. The patient's ID supplied by the 
                     ),
                 ]
             )
-        booking_agent = create_react_agent(model=self.llm_model,tools=[check_availability_by_doctor, check_availability_by_specialization, set_appointment,cancel_appointment,reschedule_appointment],prompt=system_prompt)
+        prepare_tool = build_prepare_tool(state.get("thread_ref", ""))
+        booking_agent = create_react_agent(model=self.llm_model,tools=[check_availability_by_doctor, check_availability_by_specialization, prepare_tool],prompt=system_prompt)
 
         result = booking_agent.invoke(state)
         

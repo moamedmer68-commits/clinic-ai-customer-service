@@ -17,7 +17,7 @@ Implemented and tested in this repository:
 - Dedicated FAQ node with grounded answers from the configured `CLINIC_FAQ_PATH` (defaults to `data/clinic_faq.json`), source IDs when present, and explicit no-answer behavior.
 - Medical-advice boundary response for FAQ requests.
 - Availability lookup by doctor or specialization.
-- Guarded appointment booking, cancellation, and atomic rescheduling.
+- Guarded appointment booking, cancellation, and atomic rescheduling; the conversational agent can only prepare a pending change, while the API is the only path that executes the stored action after an exact, standalone confirmation in the same patient/session thread. Pending actions expire after 15 minutes and are claimed once.
 - CSV schema/state validation, lock-file coordination, and atomic CSV replacement for local prototype use.
 - FastAPI app with `/health`, `/execute`, request IDs, safe validation errors, and safe dependency/agent failure responses.
 - SQLite conversation memory using hashed patient/session thread keys.
@@ -29,7 +29,7 @@ Not implemented:
 
 - No production authentication/authorization.
 - No deployment/CD pipeline.
-- No deterministic server-side approval token for appointment mutations; confirmation is currently an LLM instruction.
+- The confirmation gate does not provide end-user identity verification or independent mutation audit logging; it is a local SQLite prototype.
 - Phase 7 semantic RAG implementation is present: embeddings, persistent vector index, source metadata, content-fingerprint rebuilds, grounded thresholding, and deterministic retrieval evaluation.
 - No approved clinic FAQ facts yet; `data/clinic_faq.json` remains intentionally empty until clinic-owned content is supplied.
 - No production transactional database for appointments.
@@ -99,6 +99,7 @@ LOG_LEVEL=INFO
 FAQ_EMBEDDING_MODEL=text-embedding-3-small
 FAQ_RAG_INDEX_PATH=data/faq_index
 HANDOFF_DB_PATH=data/human_handoffs.sqlite3
+PENDING_ACTION_DB_PATH=data/pending_actions.sqlite3
 API_URL=http://127.0.0.1:8003/execute
 API_TIMEOUT_SECONDS=45
 API_ACCESS_TOKEN=replace_with_a_long_random_secret
@@ -128,6 +129,8 @@ The runtime requirements are pinned separately from the historical research requ
 
 ## Run
 
+**Data safety:** the basic commands below use the default `APPOINTMENT_CSV_PATH=data/doctor_availability.csv`, which is historical sample data, not live availability. For the disposable synthetic demo, follow `deployment/demo_data/README.md` and use Docker Compose after configuring local secrets. If running API/UI directly, explicitly set `APPOINTMENT_CSV_PATH` and `CLINIC_FAQ_PATH` to the fake files under ignored `runtime-data/`; do not point a demo at the historical CSV.
+
 Start the API:
 
 ```bash
@@ -149,7 +152,7 @@ curl -X POST http://127.0.0.1:8003/execute ^
   -d "{\"id_number\": 9123456, \"session_id\": \"demo\", \"messages\": \"Is john doe available on 12-10-2026?\"}"
 ```
 
-Use only synthetic/test patient IDs for local testing.
+Use only synthetic/test patient IDs for local testing. When the configured session has a pending appointment action, the API will not run the normal agent route: reply with the standalone word `YES` (or `نعم`/`أيوه`) to execute exactly the stored action, or `NO` (or `لا`) to decline it. Any other text leaves the action pending and performs no mutation. Pending actions expire after 15 minutes. This is a server-side confirmation gate, not patient authentication; the API's shared service token must not be treated as an end-user identity.
 
 ## Test
 

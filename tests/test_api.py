@@ -1,8 +1,14 @@
+import shutil
+from pathlib import Path
 from types import SimpleNamespace
 
+import pandas as pd
 from fastapi.testclient import TestClient
 
+import main as main_module
 from main import create_app
+from support.pending_actions import create_pending_action, get_pending_action
+from utils.session import make_thread_id
 
 
 class SuccessfulGraph:
@@ -175,3 +181,196 @@ def test_local_unauthenticated_mode_requires_explicit_opt_in(monkeypatch):
         client.app.state.graph = graph
         response = client.post("/execute", json={"id_number": 1234567, "messages": "hello"})
     assert response.status_code == 200
+
+
+class CheckpointingGraph:
+    def __init__(self):
+        self.state = {"messages": []}
+        self.calls = []
+
+    def invoke(self, payload, config):
+        self.calls.append((payload, config))
+        return {"messages": [SimpleNamespace(type="ai", content="Normal graph response.")]}
+
+    def update_state(self, config, values):
+        self.state["messages"] = list(self.state.get("messages", [])) + list(values.get("messages", []))
+        self.state.update({key: value for key, value in values.items() if key != "messages"})
+        return config
+
+    def get_state(self, config):
+        return SimpleNamespace(values=self.state)
+
+
+def test_api_executes_only_the_stored_pending_action_after_exact_confirmation(
+    authorized_test_client, monkeypatch, tmp_path
+):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("PENDING_ACTION_DB_PATH", str(tmp_path / "pending.sqlite3"))
+    patient_id = 9123456
+    session_id = "approval-session"
+    thread_ref = make_thread_id(patient_id, session_id)
+    action, _ = create_pending_action(
+        thread_ref,
+        "book",
+        {"doctor_name": "john doe", "desired_date": "12-10-2026 09:00"},
+    )
+    graph = CheckpointingGraph()
+    calls = []
+
+    def fake_booking_tool(args):
+        calls.append(args)
+        return "Successfully done"
+
+    monkeypatch.setattr(main_module, "set_appointment", SimpleNamespace(invoke=fake_booking_tool))
+
+    with authorized_test_client(create_app()) as client:
+        client.app.state.graph = graph
+        response = client.post(
+            "/execute",
+            json={"id_number": patient_id, "session_id": session_id, "messages": "YES"},
+        )
+
+    assert response.status_code == 200
+    assert "Confirmed and completed" in response.json()["messages"][-1]["content"]
+    assert len(calls) == 1
+    assert calls[0]["doctor_name"] == "john doe"
+    assert calls[0]["desired_date"].date == "12-10-2026 09:00"
+    assert calls[0]["id_number"].id == patient_id
+    assert graph.calls == []  # The LLM graph did not decide or execute the mutation.
+    assert get_pending_action(thread_ref) is None
+    connection = main_module.sqlite3.connect(str(tmp_path / "pending.sqlite3"))
+    try:
+        status = connection.execute(
+            "SELECT status FROM pending_appointment_actions WHERE action_id = ?", (action["action_id"],)
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert status == "executed"
+
+
+def test_api_does_not_execute_ambiguous_confirmation(authorized_test_client, monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("PENDING_ACTION_DB_PATH", str(tmp_path / "pending.sqlite3"))
+    patient_id = 9123456
+    session_id = "ambiguous-session"
+    thread_ref = make_thread_id(patient_id, session_id)
+    create_pending_action(
+        thread_ref,
+        "book",
+        {"doctor_name": "john doe", "desired_date": "12-10-2026 09:00"},
+    )
+    graph = CheckpointingGraph()
+    calls = []
+    monkeypatch.setattr(main_module, "set_appointment", SimpleNamespace(invoke=lambda args: calls.append(args) or "Successfully done"))
+
+    with authorized_test_client(create_app()) as client:
+        client.app.state.graph = graph
+        response = client.post(
+            "/execute",
+            json={
+                "id_number": patient_id,
+                "session_id": session_id,
+                "messages": "yes, but make it tomorrow",
+            },
+        )
+
+    assert response.status_code == 200
+    assert "exact message YES" in response.json()["messages"][-1]["content"]
+    assert calls == []
+    assert get_pending_action(thread_ref) is not None
+    assert graph.calls == []
+
+
+def test_api_confirmation_is_scoped_to_patient_and_session(authorized_test_client, monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("PENDING_ACTION_DB_PATH", str(tmp_path / "pending.sqlite3"))
+    patient_id = 9123456
+    original_session = "original-session"
+    thread_ref = make_thread_id(patient_id, original_session)
+    create_pending_action(
+        thread_ref,
+        "book",
+        {"doctor_name": "john doe", "desired_date": "12-10-2026 09:00"},
+    )
+    graph = CheckpointingGraph()
+    calls = []
+    monkeypatch.setattr(main_module, "set_appointment", SimpleNamespace(invoke=lambda args: calls.append(args) or "Successfully done"))
+
+    with authorized_test_client(create_app()) as client:
+        client.app.state.graph = graph
+        response = client.post(
+            "/execute",
+            json={"id_number": patient_id, "session_id": "different-session", "messages": "YES"},
+        )
+
+    assert response.status_code == 200
+    assert calls == []
+    assert graph.calls  # Without the matching scoped pending action, normal conversation handling is used.
+    assert get_pending_action(thread_ref) is not None
+
+
+def test_api_negative_confirmation_cancels_pending_action_without_mutating(
+    authorized_test_client, monkeypatch, tmp_path
+):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("PENDING_ACTION_DB_PATH", str(tmp_path / "pending.sqlite3"))
+    patient_id = 9123456
+    session_id = "reject-session"
+    thread_ref = make_thread_id(patient_id, session_id)
+    create_pending_action(
+        thread_ref,
+        "book",
+        {"doctor_name": "john doe", "desired_date": "12-10-2026 09:00"},
+    )
+    graph = CheckpointingGraph()
+    calls = []
+    monkeypatch.setattr(main_module, "set_appointment", SimpleNamespace(invoke=lambda args: calls.append(args) or "Successfully done"))
+
+    with authorized_test_client(create_app()) as client:
+        client.app.state.graph = graph
+        response = client.post(
+            "/execute",
+            json={"id_number": patient_id, "session_id": session_id, "messages": "NO"},
+        )
+
+    assert response.status_code == 200
+    assert "No appointment change was made" in response.json()["messages"][-1]["content"]
+    assert calls == []
+    assert get_pending_action(thread_ref) is None
+
+
+def test_confirmed_api_action_books_only_in_an_isolated_synthetic_schedule(
+    authorized_test_client, monkeypatch, tmp_path
+):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("PENDING_ACTION_DB_PATH", str(tmp_path / "pending.sqlite3"))
+    sample_schedule = Path(__file__).resolve().parents[1] / "deployment" / "demo_data" / "doctor_availability.csv"
+    original_bytes = sample_schedule.read_bytes()
+    isolated_schedule = tmp_path / "appointments.csv"
+    shutil.copyfile(sample_schedule, isolated_schedule)
+    monkeypatch.setenv("APPOINTMENT_CSV_PATH", str(isolated_schedule))
+
+    patient_id = 9123456
+    session_id = "synthetic-integration-session"
+    thread_ref = make_thread_id(patient_id, session_id)
+    create_pending_action(
+        thread_ref,
+        "book",
+        {"doctor_name": "john doe", "desired_date": "12-10-2026 09:00"},
+    )
+    graph = CheckpointingGraph()
+
+    with authorized_test_client(create_app()) as client:
+        client.app.state.graph = graph
+        response = client.post(
+            "/execute",
+            json={"id_number": patient_id, "session_id": session_id, "messages": "YES"},
+        )
+
+    assert response.status_code == 200
+    assert "Confirmed and completed" in response.json()["messages"][-1]["content"]
+    saved = pd.read_csv(isolated_schedule)
+    row = saved.loc[saved["date_slot"] == "12-10-2026 09:00"].iloc[0]
+    assert not bool(row["is_available"])
+    assert int(row["patient_to_attend"]) == patient_id
+    assert sample_schedule.read_bytes() == original_bytes  # The committed fake fixture was not mutated.

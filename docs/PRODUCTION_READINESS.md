@@ -16,6 +16,12 @@ The /health/live endpoint reports process liveness. /health/ready and /health fa
 
 The shared API token is a prototype service credential, not patient authentication or role-based authorization. Do not expose the service to the public Internet without HTTPS via a reverse proxy, proper end-user authentication/authorization, rate limiting, and an operator-approved privacy/security design.
 
+## Appointment mutation confirmation boundary
+
+The booking agent receives read-only availability tools and `prepare_appointment_change`; it does not receive direct booking, cancellation, or rescheduling tools. That preparation tool stores a validated operation and exact details in the SQLite database configured by `PENDING_ACTION_DB_PATH` (15-minute expiry by default). The API claims the pending record once and executes only its stored payload after a standalone exact `YES` or `NO` (or supported exact Arabic equivalents) in the same hashed patient/session thread. Mixed or unrelated messages do not approve the action. A declined action is cancelled; expired or already claimed actions cannot be executed again.
+
+This is a deterministic safety gate for the local prototype, not proof of patient identity or consent by itself. The API still uses a shared service token, appointment data remains CSV-backed, and production use still requires end-user authentication/authorization, a transactional database, audit/retention policy, and operational approval.
+
 ## Reproducible runtime dependencies
 
 - requirements-runtime.txt contains the small pinned dependency set for the supported API/UI runtime.
@@ -54,7 +60,7 @@ The repository is still a prototype. Remaining release blockers include:
 - No authorized current appointment schedule has been supplied for deployment. The committed schedule is historical and must not be treated as live data.
 - Appointment storage remains CSV with local-file locking; conversation memory and handoffs are SQLite. Multi-host/multi-worker production should move operational data to a transactional database and a shared managed checkpointer/queue.
 - Human escalation creates a local queue case only. It does not notify or connect a live human operator.
-- The shared API key is not patient authentication, and there is no per-role access control or patient self-service access model.
+- The shared API key is not patient authentication, and there is no per-role access control or patient self-service access model. The new pending-action gate protects the mutation confirmation step but does not authenticate the patient.
 - Automated retention/deletion, encryption-at-rest policy, audit access controls, notification ownership, backups/restore rehearsal, rate limiting, load testing, security testing, cloud deployment, TLS/reverse proxy, and rollback rehearsal remain environment-specific production work.
 - The browser layout and keyboard accessibility still require manual acceptance using docs/STREAMLIT_UI_ACCEPTANCE.md.
 
