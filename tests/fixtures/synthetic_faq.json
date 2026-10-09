@@ -1,0 +1,35 @@
+[
+  {
+    "id": "clinic-hours",
+    "question": "What are the clinic opening hours?",
+    "keywords": ["open", "opening", "hours", "schedule"],
+    "answer": "Synthetic approved hours for retrieval tests.",
+    "source": {
+      "title": "Synthetic FAQ",
+      "reviewed_at": "2026-10-08",
+      "owner": "test"
+    }
+  },
+  {
+    "id": "insurance",
+    "question": "Which insurance plans are accepted?",
+    "keywords": ["insurance", "coverage", "plans"],
+    "answer": "Synthetic insurance policy for retrieval tests.",
+    "source": {
+      "title": "Synthetic FAQ",
+      "reviewed_at": "2026-10-08",
+      "owner": "test"
+    }
+  },
+  {
+    "id": "cancellation",
+    "question": "How can I cancel an appointment?",
+    "keywords": ["cancel", "cancellation", "appointment"],
+    "answer": "Synthetic cancellation policy for retrieval tests.",
+    "source": {
+      "title": "Synthetic FAQ",
+      "reviewed_at": "2026-10-08",
+      "owner": "test"
+    }
+  }
+]

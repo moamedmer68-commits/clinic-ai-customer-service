@@ -4,5 +4,10 @@ doctor_appointment_agentic.egg-info
 # Local conversation checkpoint database
 data/conversations.sqlite3
 data/conversations.sqlite3-*
+# Locally generated semantic FAQ vector index
+data/faq_index/
+# Local human-handoff queue
+data/human_handoffs.sqlite3
+data/human_handoffs.sqlite3-*
 __pycache__/
 *.py[cod]

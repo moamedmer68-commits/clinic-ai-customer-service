@@ -2,6 +2,7 @@ import json
 
 from langchain_core.messages import HumanMessage
 
+from knowledge_base import FAQMatch
 import agent as agent_module
 from agent import DoctorAppointmentAgent
 
@@ -20,6 +21,16 @@ def test_faq_answers_from_configured_source_and_supports_paraphrase(tmp_path, mo
         "answer": "The clinic is open Monday through Friday, 9 AM to 5 PM.",
     }]), encoding="utf-8")
     monkeypatch.setattr(agent_module, "__file__", str(tmp_path / "agent.py"))
+    monkeypatch.setattr(
+        agent_module,
+        "retrieve_semantic_faq",
+        lambda query, **kwargs: FAQMatch(
+            answer="The clinic is open Monday through Friday, 9 AM to 5 PM.",
+            question="What are the clinic opening hours?",
+            score=0.91,
+            source_id="clinic-hours",
+        ),
+    )
     service = DoctorAppointmentAgent(llm_model=UnusedLLM())
 
     result = service.faq_node({"query": "When is the clinic open?", "messages": []})
@@ -33,17 +44,21 @@ def test_faq_unknown_answer_does_not_invent_policy(tmp_path, monkeypatch):
     faq_dir.mkdir()
     (faq_dir / "clinic_faq.json").write_text("[]", encoding="utf-8")
     monkeypatch.setattr(agent_module, "__file__", str(tmp_path / "agent.py"))
+    monkeypatch.setenv("HANDOFF_DB_PATH", str(tmp_path / "handoffs.sqlite3"))
     service = DoctorAppointmentAgent(llm_model=UnusedLLM())
 
     result = service.faq_node({"query": "Do you accept my insurance?", "messages": []})
 
-    assert "don’t have a verified answer" in result.update["messages"][0].content
+    assert "I’ve escalated this request" in result.update["messages"][0].content
+    assert "pending human review" in result.update["messages"][0].content
+    assert result.update["escalation_status"] == "pending"
 
 
 def test_faq_refuses_medical_advice_requests(tmp_path, monkeypatch):
     (tmp_path / "data").mkdir()
     (tmp_path / "data" / "clinic_faq.json").write_text("[]", encoding="utf-8")
     monkeypatch.setattr(agent_module, "__file__", str(tmp_path / "agent.py"))
+    monkeypatch.setenv("HANDOFF_DB_PATH", str(tmp_path / "handoffs.sqlite3"))
     service = DoctorAppointmentAgent(llm_model=UnusedLLM())
 
     result = service.faq_node({"query": "What medicine should I take for tooth pain?", "messages": []})

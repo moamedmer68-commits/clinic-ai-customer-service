@@ -19,19 +19,21 @@ This document is the source of truth for project scope, phase order, implementat
 - Synchronize this roadmap with actual repository state and evidence.
 
 ## Phase overview
-| Phase | Name | Current status |
-|---|---|---|
-| 0 | Repository Audit | Completed (baseline audit) |
-| 1 | Data Integrity | Completed — acceptance review, integrity hardening, and tests verified |
-| 2 | Backend Reliability & Error Handling | Completed — API contract, safe errors, correlation, and tests verified |
-| 3 | Customer Service Core & Intent Routing | Completed — explicit intent routing, clarification, bounded execution, and mocked routing tests verified |
-| 4 | FAQ Agent | In progress — dedicated grounded FAQ node and tests implemented; approved clinic FAQ facts still needed |
-| 5 | Appointment Agent Integration | Completed — booking specialist toolset, user-confirmation instructions, routing/integration tests, and existing mutation-integrity tests verified |
-| 6 | Conversation Memory | Completed — API multi-turn/restart persistence, patient/session isolation, Streamlit conversation controls, and operations guidance verified |
-| 7 | RAG Knowledge Base | Not started |
-| 8 | Support & Human Escalation | Not started |
-| 9 | Frontend Chat Experience | In progress — basic Streamlit UI exists; conversational UX work pending |
-| 10 | Production Readiness | Not started |
+| Phase | Name | Current status | Estimated completion |
+|---|---|---|---:|
+| 0 | Repository Audit | Completed — baseline and current structure reviewed | 100% |
+| 1 | Data Integrity | Completed — CSV invariants, guarded mutations, and tests verified | 100% |
+| 2 | Backend Reliability & Error Handling | Completed — API contract, safe errors, correlation, and tests verified | 100% |
+| 3 | Customer Service Core & Intent Routing | Completed — explicit routing, clarification, bounded execution, and tests verified | 100% |
+| 4 | FAQ Agent | In progress — grounded FAQ logic/tests and content guide exist; clinic-approved facts remain missing | 83% |
+| 5 | Appointment Agent Integration | Completed for prototype — specialist tools, confirmation instructions, routing/integration and mutation tests verified | 100% |
+| 6 | Conversation Memory | Completed for prototype — API multi-turn/restart persistence, isolation, Streamlit controls, operations guidance verified | 100% |
+| 7 | RAG Knowledge Base | Blocked for real-world activation — semantic RAG implementation, persistent vector index, ingestion, source tracking, and synthetic evaluation verified; clinic-approved corpus remains external dependency | 95% |
+| 8 | Support & Human Escalation | Completed for local-queue prototype — deterministic triggers, privacy-minimized handoff records, status tracking, truthful responses, and tests verified | 100% |
+| 9 | Frontend Chat Experience | In progress — transcript, session controls, validation/error handling exist; UX/accessibility and automated UI verification remain | 75% |
+| 10 | Production Readiness | In progress — CI checks and local environment exist; deployment/security/operations requirements remain | 25% |
+
+**Percentage note:** These are approximate scope-completion estimates based on implemented and verified roadmap criteria, not test coverage or a claim of production readiness. Phases 5–6 are complete only for prototype scope; their listed production limitations remain in Phase 10.
 
 ## Phase 0 — Repository Audit
 **Goal:** Establish architecture, constraints, known defects, and a reproducible baseline.
@@ -113,24 +115,29 @@ This document is the source of truth for project scope, phase order, implementat
 
 ## Phase 7 — RAG Knowledge Base
 **Goal:** Retrieve current clinic knowledge with traceable grounding for FAQ/policy answers.
+**Current implementation:** FAQ records are validated and normalized, embedded with the configured OpenAI embedding model, stored in a persistent file-based vector index (`embeddings.npy` + JSON metadata), fingerprinted for content-aware rebuilds, retrieved by cosine similarity with configurable top-k/source filters/thresholds, and returned as grounded answers with source IDs. A deterministic lexical retriever remains available as a baseline for tests. Appointment workflows remain separate structured CSV/tool operations and are not semantic retrieval.
 **Tasks:**
-- [ ] Select approved documents and define content ownership/update process.
-- [ ] Implement ingestion, parsing, chunking, metadata, embeddings, and vector-store persistence.
-- [ ] Implement retrieval with source filters/configurable top-k; evaluate relevance and missing-answer behavior.
-- [ ] Return citations/source references where practical.
-- [ ] Create evaluation set for answer correctness, retrieval relevance, hallucination resistance, and updates.
-- [ ] Integrate retrieval with FAQ only after evaluation criteria are met.
-**Acceptance criteria:** repeatable ingestion; documented retrieval evaluation; grounded answers; safe fallback when evidence is insufficient.
+- [ ] Select and load the clinic-approved corpus and define clinic ownership/review/update process before real-world use.
+- [x] Implement validated FAQ ingestion, metadata, embeddings, and persistent vector-index storage. FAQ records are already atomic retrieval units, so no generic document splitter is required for the current corpus.
+- [x] Implement deterministic lexical retrieval with record validation and explicit no-answer behavior.
+- [x] Implement semantic vector retrieval with source-ID filters, configurable top-k, similarity thresholding, and measured missing-answer behavior.
+- [x] Return source IDs for matched FAQ entries where configured.
+- [x] Create a synthetic evaluation set and deterministic retrieval metrics: hit rate@k, MRR, and no-answer rate.
+- [x] Integrate semantic retrieval with the FAQ node using grounded stored answers and fail-closed behavior.
+**Acceptance criteria:** repeatable ingestion [x]; documented retrieval evaluation [x]; grounded answers [x]; safe fallback when evidence is insufficient [x]. Remaining release dependency: clinic-owned approved FAQ content and final content/relevance review.
 
 ## Phase 8 — Support & Human Escalation
 **Goal:** Transfer unresolved, sensitive, or user-requested cases to a human with useful context.
+**Implemented:** A local SQLite handoff queue is used for the prototype. The supervisor detects high-confidence explicit human requests, complaints/manager requests, and urgent/severe medical wording before LLM routing. The FAQ node escalates unresolved questions, medical-advice requests, and semantic retrieval errors.
 **Tasks:**
-- [ ] Define triggers, user notice/consent, business hours, and response-time expectations.
-- [ ] Choose handoff channel/integration or explicit local queue for prototype.
-- [ ] Create concise handoff summary containing only necessary conversation details.
-- [ ] Track escalation status; do not claim a human responded before confirmation.
-- [ ] Test requested escalation, unresolved questions, errors, and unavailable support.
+- [x] Define triggers, user notice/consent, business hours, and response-time expectations.
+- [x] Choose handoff channel/integration or explicit local queue for prototype.
+- [x] Create concise handoff summary containing only necessary conversation details.
+- [x] Track escalation status; do not claim a human responded before confirmation.
+- [x] Test requested escalation, unresolved questions, errors, and unavailable support.
+**Prototype policy:** the local queue accepts cases 24/7; no response-time SLA is promised. An explicit human request is the patient's direct escalation consent. Automatic unresolved/sensitive escalation is immediately disclosed to the patient; the prototype stores the case locally and does not transmit it to a third-party contact channel.
 **Acceptance criteria:** explicit/testable escalation; privacy-minimized context; truthful status messaging.
+**Current status:** Completed for prototype scope. Production handoff still requires an authenticated support channel, operator access control, notification/ownership, retention policy, and an actual human contact path.
 
 ## Phase 9 — Frontend Chat Experience
 **Goal:** Provide clear, accessible multi-turn chat and reliable feedback.
@@ -233,3 +240,53 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Added Windows-only environment markers for `pywin32` and `win32_setctime`.
 - Improved `.github/workflows/ci.yml`: concurrency cancellation, isolated runner-temp SQLite path, 30-minute timeout, binary-wheel preference, dependency consistency check (`pip check`), compile check, then test suite.
 - Local validation: compile check passed; full pytest suite 37 passed (163 existing dependency deprecation warnings). Local venv has no pip module, so `pip check` could not be run locally; workflow will execute it after fresh pip installation.
+
+
+### Repository and data audit — 2026-09-29
+- Audited tracked project structure, current branch/history, roadmap, README, CI workflow, knowledge-base module/docs, data models, synthetic fixture, and data file metadata. Working tree has only the eight previously preserved untracked scratch/isolated test files; no tracked modifications were present before this roadmap update.
+- Compared `data/doctor_availability.csv` with `notebook/availability.csv`: both are byte-for-byte identical (SHA-256 `e02843b7e8f39a5486145af933b5e0822cde9d167c229efd59338ca3f09fc9a8`), with 4,280 records and the same five-column schema. Therefore no data replacement/copy is needed: the legacy appointment dataset is already present in the runtime canonical path `data/doctor_availability.csv`; the notebook copy is a duplicate reference artifact.
+- Data metadata only (no patient identifiers or row contents displayed): 2,716 available and 1,564 booked rows; 10 doctor names and 7 specialties. Dataset dates are in 2024, so it is historical sample/prototype data, not confirmed current clinic availability. Do not present it as live availability without refresh/approval.
+- `tests/fixtures/synthetic_appointments.csv` is a separate 10-row fabricated test fixture. Keep it isolated under tests; never replace the legacy schedule with it or use it as real clinic data. It uses test doctors/specialties and is not a drop-in production dataset.
+- `data/clinic_faq.json` is an empty list (7 bytes with UTF-8 BOM); no approved clinic FAQ corpus exists. `knowledge_base.py` implements deterministic lexical FAQ retrieval, not embedding/vector RAG. Appointment availability correctly remains structured CSV/tool retrieval, not semantic search.
+- `data_models/models.py` contains one `DateTimeModel`, one `DateModel`, and one `IdentificationNumberModel`; no duplicate class definitions were found in the current file (the earlier screenshot showed an older/different working copy). Do not change it based only on that screenshot.
+- README still contains historical/stale statements about no tests, no CI, no memory, and old stateless architecture. Update README as a separate documentation task after verifying current startup/config instructions; it was not changed in this audit.
+- CI run reviewed from the supplied GitHub screenshot was cancelled during dependency installation after 2m38s; test execution steps were skipped. The visible Node 20 deprecation and Ubuntu runner migration notices are warnings/not the reported failure cause. A definitive dependency-install error requires opening the expanded install-step logs.
+- Next data action: obtain an owner-approved, current clinic schedule and define safe refresh/ownership; preserve this legacy CSV as a versioned prototype/reference copy until source-of-truth and patient-data handling are confirmed. No dataset, secrets, Windows settings, or scratch files were modified.
+
+
+### Phase 7 continuation — 2026-10-05
+- Strengthened `knowledge_base.py` FAQ loading and retrieval: records are normalized, malformed entries fail closed, common stopwords are ignored, optional source metadata is preserved, and low-evidence/empty queries still return no match.
+- Updated the FAQ node to include a configured FAQ source ID in grounded answers. Unknown FAQ answers still use explicit no-answer fallback, and appointment availability/mutation workflows remain separate structured CSV tools.
+- Updated `README.md`, `docs/RAG_KNOWLEDGE_BASE.md`, and `docs/FAQ_CONTENT_GUIDE.md` to remove stale claims about no tests/CI/memory, document the historical legacy appointment CSV boundary, and clarify that current Phase 7 is lexical retrieval rather than vector/embedding RAG.
+- Focused verification: `.\\.venv\\Scripts\\python.exe -m pytest tests\\test_knowledge_base.py tests\\test_faq.py -q -p no:cacheprovider --basetemp=.pytest-tmp` — 9 passed. Initial focused run without `--basetemp` hit a Windows temp-directory `PermissionError` before several `tmp_path` fixtures started.
+- Additional focused verification: `.\\.venv\\Scripts\\python.exe -m pytest tests\\test_tools.py tests\\test_appointment_agent.py -q -p no:cacheprovider --basetemp=.pytest-tmp` — 16 passed; `.\\.venv\\Scripts\\python.exe -m pytest tests\\test_api.py tests\\test_memory.py tests\\test_routing.py -q -p no:cacheprovider --basetemp=.pytest-tmp-api` — 12 passed, 163 dependency deprecation warnings.
+- Compile check: `.\\.venv\\Scripts\\python.exe -m compileall -q agent.py main.py toolkit data_models utils knowledge_base.py` — passed.
+- Full verification: `.\\.venv\\Scripts\\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp-full` — 38 passed, 163 warnings. Warnings are existing Starlette/httpx and LangChain/Pydantic deprecations.
+- Remaining Phase 7 constraints: `data/clinic_faq.json` is still empty; no approved clinic corpus, ingestion pipeline, embedding/vector store, or representative retrieval evaluation set exists. Do not claim production RAG readiness.
+
+
+### Phase 8 implementation work — 2026-10-08
+- Added support/handoff.py and support/__init__.py with a local SQLite case queue, case IDs, lifecycle statuses (pending, acknowledged, resolved, cancelled), bounded conversation summaries, sensitive-value redaction, trigger detection, and truthful user-facing status messages.
+- Integrated explicit human/complaint escalation into agent.py before LLM routing; unresolved FAQ questions and FAQ retrieval failures now create a local handoff case instead of falsely claiming an answer or human contact. Medical-advice requests remain refused and are escalated when the local queue is available.
+- Added HANDOFF_DB_PATH configuration and ignored local handoff database files in Git.
+- Added docs/HUMAN_ESCALATION.md documenting triggers, queue lifecycle, privacy minimization, prototype business-hours/SLA policy, and production limitations.
+- Added tests/test_handoff.py covering trigger detection, redaction/bounded summaries, case lifecycle, explicit human escalation without an LLM call, unresolved FAQ escalation, retrieval-error escalation, queue failure truthfulness, and invalid status handling. Updated FAQ tests to assert the new escalation contract.
+- Focused verification: .venv\\Scripts\\python.exe -m pytest tests\\test_handoff.py tests\\test_knowledge_base.py tests\\test_faq.py tests\\test_routing.py -q -p no:cacheprovider --basetemp=.pytest-tmp-phase8c — 25 passed.
+- No real appointment/patient dataset was modified. The generated local handoff database was removed after an early test run created it before the test isolation was corrected.
+- Phase 8 prototype scope is complete. Production contact-channel integration, authentication/access control, notifications, retention, and operational ownership remain Phase 10 requirements.
+
+### Phase 7 completion work — 2026-10-08
+- Replaced the FAQ runtime retrieval path with semantic embedding retrieval while preserving the deterministic lexical retriever as a baseline.
+- Added persistent file-based vector index support in `knowledge_base.py`: normalized embeddings are stored in `embeddings.npy` and normalized FAQ records/source metadata in `metadata.json`.
+- Added content fingerprinting so a changed validated FAQ corpus automatically triggers index rebuild; unchanged corpora reuse the persisted index.
+- Added configurable `FAQ_EMBEDDING_MODEL`, `FAQ_RAG_INDEX_PATH`, top-k, minimum similarity threshold, and source-ID filtering.
+- Added a module CLI for controlled FAQ ingestion/index building: `python -m knowledge_base --source data/clinic_faq.json --index-dir data/faq_index`.
+- FAQ node now consumes semantic retrieval and fails closed to the verified-information fallback when evidence or the retrieval service is unavailable; appointment availability/booking/cancellation/rescheduling remain structured tools and are never decided by RAG similarity.
+- Added synthetic FAQ and retrieval-evaluation fixtures plus tests for paraphrase retrieval, source metadata, no-answer thresholds, source filtering, index persistence/rebuild, and hit-rate/MRR/no-answer metrics.
+- Added `data/faq_index/` to `.gitignore` because the local vector index is generated from the approved FAQ source and should not be committed as runtime state.
+- Local venv was missing pip and the already-required `langchain-openai` package. Bootstrapped pip with `ensurepip`, installed `langchain-openai==0.3.9`, then restored the pinned `langchain-core==0.3.45`, `openai==1.66.5`, and `tiktoken==0.8.0` versions from requirements. `pip check` reported no broken requirements.
+- Focused verification: `.\.venv\Scripts\python.exe -m pytest tests\test_knowledge_base.py tests\test_faq.py -q -p no:cacheprovider --basetemp=.pytest-tmp-rag4` — 13 passed.
+- Compile validation: `.\.venv\Scripts\python.exe -m compileall -q agent.py main.py toolkit data_models utils knowledge_base.py` — passed as part of the validation run.
+- Full verification: `.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp-full2` — 42 passed, 163 warnings. Warnings are existing Starlette/httpx and LangChain/Pydantic deprecations.
+- `data/clinic_faq.json` remains empty by design. No clinic facts were invented and no appointment/patient dataset was changed.
+- Phase 7 implementation is validated, but real-world FAQ activation still depends on clinic-approved FAQ content and content-owner review.
