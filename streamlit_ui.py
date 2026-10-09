@@ -3,6 +3,9 @@ import uuid
 
 import requests
 import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from ui_helpers import escalation_details, latest_assistant_message, normalize_patient_id
 
@@ -41,8 +44,8 @@ with st.sidebar:
     st.caption("Conversation history is scoped to this patient and session.")
     st.divider()
     st.caption("Human escalation currently creates a local support-queue case. It does not send an email or notify a live operator.")
-    if not API_ACCESS_TOKEN:
-        st.warning("API access token is not configured in this UI process.") if os.getenv("REQUIRE_API_TOKEN", "").lower() == "true" else None
+    if not API_ACCESS_TOKEN and os.getenv("ALLOW_UNAUTHENTICATED_LOCAL_DEV", "").strip().lower() != "true":
+        st.warning("API_ACCESS_TOKEN is not configured. The API will reject requests until a shared token is set.")
 
 for entry in st.session_state.transcript:
     role = entry.get("role", "assistant")

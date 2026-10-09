@@ -31,7 +31,7 @@ This document is the source of truth for project scope, phase order, implementat
 | 7 | RAG Knowledge Base | Blocked for real-world activation — semantic RAG implementation, persistent vector index, ingestion, source tracking, and synthetic evaluation verified; clinic-approved corpus remains external dependency | 95% |
 | 8 | Support & Human Escalation | Completed for local-queue prototype — deterministic triggers, privacy-minimized handoff records, status tracking, truthful responses, and tests verified | 100% |
 | 9 | Frontend Chat Experience | Implemented and AppTest verified — transcript, session controls, masked ID validation, service errors, and escalation feedback; manual browser/responsive review remains | 90% |
-| 10 | Production Readiness | In progress — CI checks and local environment exist; deployment/security/operations requirements remain | 25% |
+| 10 | Production Readiness | In progress — default API token gate, readiness/liveness checks, pinned runtime/test manifests, container/Compose scaffold, and CI image-build step implemented; actual container build and clinic deployment/security approvals remain blocked | 65% |
 
 **Percentage note:** These are approximate scope-completion estimates based on implemented and verified roadmap criteria, not test coverage or a claim of production readiness. Phases 5–6 are complete only for prototype scope; their listed production limitations remain in Phase 10.
 
@@ -154,15 +154,26 @@ This document is the source of truth for project scope, phase order, implementat
 
 ## Phase 10 — Production Readiness
 **Goal:** Prepare secure, observable, repeatable deployment and operation.
+**Implemented for the current prototype:**
+- `main.py` requires `API_ACCESS_TOKEN` for `POST /execute` by default, compares credentials with `hmac.compare_digest`, rejects missing/invalid tokens, and has an explicit local-only escape hatch that defaults off.
+- Request IDs are restricted to a safe allowlist; API responses set `Cache-Control: no-store`. Added `/health/live` and readiness checks.
+- OpenAI model configuration now uses environment-controlled bounded timeout/retry settings. Shared `SqliteSaver` invocations are serialized in the single-process prototype to avoid concurrent use of one connection.
+- Added curated pinned `requirements-runtime.txt` and `requirements-test.txt` rather than installing the full optional research/CV dependency set for a production runtime.
+- Added a non-root `Dockerfile`, `.dockerignore`, `docker-compose.yml`, deployment FAQ template, `.env.example` security/runtime variables, and ignored `runtime-data/` directory. Compose binds API/UI ports to localhost, requires secrets, and mounts separately provisioned runtime data; it never packages the historical appointment CSV.
+- CI uses the pinned runtime/test manifests, checks dependency consistency, compiles app/UI/support modules, runs tests, and builds a container image.
+- Added `docs/PRODUCTION_READINESS.md` with launch instructions and explicit unresolved release gates.
 **Tasks:**
-- [ ] Define deployment target, environment configuration, secrets management, and startup checks.
-- [ ] Reproduce dependencies/environment; resolve native/heavy dependency installation constraints.
-- [ ] Add Docker/CI if selected for deployment; automate linting and tests.
-- [ ] Review authentication/authorization, patient-data minimization, retention, encryption, and access controls.
-- [ ] Add health/readiness checks, metrics/logging, timeouts, retries, rate limits, and graceful shutdown.
-- [ ] Define backup/recovery; document CSV-to-transactional-storage migration if concurrency requires it.
-- [ ] Perform security/failure/load checks; document limitations and release/rollback procedure.
-**Acceptance criteria:** reproducible deployment; automated checks pass; operational/security controls verified; recovery plan exists.
+- [x] Define deployment scaffold, environment configuration, secret names, and startup/readiness checks; actual hosting target and secret-store selection remain environment decisions.
+- [x] Separate and pin the supported runtime dependency set; complete isolation of every transitive dependency remains a future lock-file improvement.
+- [x] Add Docker/Compose and CI compile/test/image-build steps.
+- [x] Add service-token gate, patient-data minimization in current flows, readiness/liveness checks, request correlation, bounded OpenAI timeouts/retries, and local SQLite invocation serialization.
+- [ ] Add end-user authentication/authorization, rate limiting, managed secrets, TLS/reverse proxy, encryption/access policy, retention/deletion, and operational alerting.
+- [ ] Define backup/recovery and migrate from CSV/SQLite prototype storage to transactional/shared persistence where concurrency or multi-host deployment requires it.
+- [ ] Validate external human handoff/notification with an actual staffed support channel.
+- [ ] Perform failure/load/security checks, manual UI accessibility/responsive review, deployment smoke tests, and release/rollback rehearsal.
+**Verification:** Full local test suite passed after the API authorization changes; `pip check` passed; `docker compose config --quiet` parsed successfully using dummy environment values. A local `docker build` could not run because Docker Desktop's Linux engine pipe was not running, so the container image itself is not yet verified. CI now builds the image on hosted runners.
+**Acceptance criteria:** prototype security/configuration and CI/container scaffolding verified; operational/security controls and environment-specific release gates remain open.
+**Current status:** In progress / not safe for real clinic data. Phase 7 still requires clinic-approved FAQ content; deployment needs an authorized current appointment schedule, real secrets, a staffed human-support channel, and privacy/security sign-off.
 
 ## Execution log
 
@@ -302,3 +313,16 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Focused checks: `.venv\\Scripts\\python.exe -m pytest tests\\test_ui_helpers.py tests\\test_api.py tests\\test_handoff.py tests\\test_faq.py tests\\test_knowledge_base.py -q -p no:cacheprovider --basetemp=.pytest-tmp-phase9` — 39 passed, 1 warning. Streamlit AppTest: `tests/test_streamlit_ui.py` — 3 passed.
 - Full verification: `.venv\\Scripts\\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp-phase9-full` — 66 passed, 163 warnings. Compileall passed, `pip check` reported no broken requirements, and `git diff --check` passed (Git only reported line-ending conversion notices).
 - Remaining: visual browser/mobile/responsive and keyboard accessibility review were not performed. This phase is implemented for prototype scope but retains that manual acceptance item.
+
+
+### Phase 10 implementation checkpoint — 2026-10-09
+- Hardened `main.py`: `POST /execute` now requires `API_ACCESS_TOKEN` by default and uses constant-time comparison; missing configuration fails with 503, invalid credentials with 401. `ALLOW_UNAUTHENTICATED_LOCAL_DEV=true` is an explicit local-only exception and defaults off.
+- Added `/health/live` and `/health/ready`, safe allowlisted request IDs, no-store response headers, and readiness checks for model/security configuration. Shared SQLite checkpointer graph invocations are serialized for the single-process prototype.
+- Added bounded OpenAI request timeout/retry configuration and selectable `OPENAI_CHAT_MODEL` in `utils/llms.py`.
+- Added `requirements-runtime.txt` and `requirements-test.txt` with a curated pinned supported runtime/test dependency set, avoiding the repository's optional historical ML/CV dependency graph for app deployment. Added `tests/conftest.py` for authorized API calls and `tests/test_llm_config.py` for bounded timeout/retry configuration.
+- Added a non-root `Dockerfile`, `.dockerignore`, localhost-only API/UI `docker-compose.yml`, deploy-only FAQ template, runtime-data exclusion from Git, and security configuration in `.env.example`. Historical schedule data is not copied into the image; deployment must provision an authorized current schedule separately.
+- Updated CI to install the runtime/test manifests, run `pip check`, compile app/UI/support modules, run pytest, and build a container image. Updated `docs/CI_CD.md`, added `docs/PRODUCTION_READINESS.md`, and updated README instructions/limitations.
+- Full validation: `.venv\\Scripts\\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp-phase10-full` — 83 passed. `python -m compileall -q agent.py main.py streamlit_ui.py ui_helpers.py toolkit data_models utils knowledge_base.py support` passed. `pip check` — No broken requirements found. `docker compose config --quiet` passed using non-secret placeholder values. `git diff --check` passed; Git emitted only expected LF/CRLF working-copy notices.
+- Local `docker build` was attempted but failed because the Docker Desktop Linux engine pipe was unavailable. The actual image build remains unverified locally; CI now includes a hosted image-build step and must pass after this push.
+- No `data/doctor_availability.csv`, real patient dataset, `.env`, `scratch*`, or `isolated_test*` file was staged or modified. No secret/token values were committed.
+- Phase 10 remains in progress (approximately 65%). This is not ready for real clinic data: remaining items include end-user authentication/authorization, rate limiting/TLS, policy-based retention/deletion/encryption and access auditing, managed production persistence/transactional booking data, real staffed human escalation, backup/recovery, security/load testing, deployment/rollback, plus the approved FAQ and current appointment schedule. Phase 9 still needs manual browser/responsive review.

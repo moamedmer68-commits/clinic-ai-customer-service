@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 30
     env:
       OPENAI_API_KEY: ci-test-placeholder
+      API_ACCESS_TOKEN: ci-test-api-token
       LOG_LEVEL: WARNING
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
@@ -31,21 +32,15 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements-runtime.txt
+            requirements-test.txt
 
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
 
-      - name: Install project dependencies
-        shell: bash
-        run: |
-          # Avoid invoking setup.py's editable install: it re-reads the full
-          # requirements file and redundantly resolves every dependency.
-          grep -vE '^-e \.?$' requirements.txt > "$RUNNER_TEMP/requirements-ci.txt"
-          python -m pip install --prefer-binary -r "$RUNNER_TEMP/requirements-ci.txt"
-
-      - name: Install test runner
-        run: python -m pip install pytest
+      - name: Install pinned runtime and test dependencies
+        run: python -m pip install --prefer-binary -r requirements-test.txt
 
       - name: Validate installed dependencies
         run: python -m pip check
@@ -56,4 +51,8 @@ jobs:
       - name: Run test suite
         env:
           CHECKPOINT_DB_PATH: ${{ runner.temp }}/clinic-ci-conversations.sqlite3
+          HANDOFF_DB_PATH: ${{ runner.temp }}/clinic-ci-handoffs.sqlite3
         run: python -m pytest -q -p no:cacheprovider
+
+      - name: Build production container
+        run: docker build --pull -t clinic-ai-customer-service:${{ github.sha }} .

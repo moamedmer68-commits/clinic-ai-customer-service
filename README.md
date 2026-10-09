@@ -76,10 +76,16 @@ Key files:
 ## Configuration
 
 Required for a real LLM-backed app run:
+- OPENAI_API_KEY for the model provider.
+- API_ACCESS_TOKEN for authenticated calls to POST /execute.
 
-```text
-OPENAI_API_KEY=...
+Generate a token locally with:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
+
+Store the generated token only in your untracked local .env or a deployment secret store. The API rejects /execute requests when a token has not been configured. ALLOW_UNAUTHENTICATED_LOCAL_DEV=true is an explicit local-only escape hatch and must not be used in deployment.
 
 Optional:
 
@@ -92,6 +98,11 @@ FAQ_RAG_INDEX_PATH=data/faq_index
 HANDOFF_DB_PATH=data/human_handoffs.sqlite3
 API_URL=http://127.0.0.1:8003/execute
 API_TIMEOUT_SECONDS=45
+API_ACCESS_TOKEN=replace_with_a_long_random_secret
+ALLOW_UNAUTHENTICATED_LOCAL_DEV=false
+OPENAI_CHAT_MODEL=gpt-4o
+OPENAI_REQUEST_TIMEOUT_SECONDS=30
+OPENAI_MAX_RETRIES=2
 ```
 
 For tests, fixtures and monkeypatches avoid real OpenAI calls and avoid mutating canonical data.
@@ -105,11 +116,12 @@ python -m venv .venv
 # macOS/Linux:
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install pytest
+python -m pip install -r requirements-runtime.txt
+# For local test/development work:
+python -m pip install -r requirements-test.txt
 ```
 
-The pinned dependency set is heavy and includes optional libraries that are not exercised by the current runtime path.
+The runtime requirements are pinned separately from the historical research requirements.txt, which includes optional CV/ML libraries not needed to run the clinic API and UI.
 
 ## Run
 
@@ -130,6 +142,7 @@ Raw API example:
 ```bash
 curl -X POST http://127.0.0.1:8003/execute ^
   -H "Content-Type: application/json" ^
+  -H "X-API-Key: YOUR_API_ACCESS_TOKEN" ^
   -d "{\"id_number\": 1234567, \"session_id\": \"demo\", \"messages\": \"Is john doe available on 08-08-2024?\"}"
 ```
 
@@ -170,11 +183,16 @@ python -m pytest -q -p no:cacheprovider
 Compile check:
 
 ```bash
-python -m compileall -q agent.py main.py toolkit data_models utils knowledge_base.py
+python -m compileall -q agent.py main.py streamlit_ui.py ui_helpers.py toolkit data_models utils knowledge_base.py support
 ```
+
+## Deployment scaffold
+
+The API/UI Docker and Compose scaffold is documented in `docs/PRODUCTION_READINESS.md`. Before running Compose, create `runtime-data/`, provision an approved FAQ at `runtime-data/clinic_faq.json`, and provide an authorized current `runtime-data/doctor_availability.csv` schedule. **Do not copy the committed historical prototype schedule into deployment.** Configure `OPENAI_API_KEY` and a strong `API_ACCESS_TOKEN` in a local untracked `.env` or managed deployment secrets. Compose publishes ports on localhost only by default.
 
 ## Documentation
 
+- `docs/PRODUCTION_READINESS.md`: security configuration, container usage, release blockers, and checklist.
 - `ROADMAP.md`: phase status, verification history, and remaining work.
 - `docs/RAG_KNOWLEDGE_BASE.md`: knowledge-source boundaries and Phase 7 limitations.
 - `docs/FAQ_CONTENT_GUIDE.md`: approved FAQ content process.
@@ -183,4 +201,4 @@ python -m compileall -q agent.py main.py toolkit data_models utils knowledge_bas
 
 ## Production Notes
 
-Before using this with real patients, define clinic data ownership, refresh current schedules, replace CSV storage with transactional infrastructure as needed, implement authentication/authorization, establish retention/deletion processes, and add deterministic server-side confirmation for mutations.
+This is not yet production-clinic ready. Before real patient use, obtain clinic-approved FAQ facts and a verified current schedule, replace prototype API-token-only security with end-user authentication/authorization, define retention/deletion and encryption/access policies, connect human escalation to a real staffed channel, replace file/SQLite prototype stores for multi-host concurrency, enforce deterministic server-side mutation confirmation, and validate backups, monitoring, rate limits, deployment security, and rollback. See `docs/PRODUCTION_READINESS.md`.

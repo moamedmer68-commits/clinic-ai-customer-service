@@ -1,5 +1,7 @@
 venv
 .env
+.env.*
+!.env.example
 doctor_appointment_agentic.egg-info
 # Local conversation checkpoint database
 data/conversations.sqlite3
@@ -9,5 +11,7 @@ data/faq_index/
 # Local human-handoff queue
 data/human_handoffs.sqlite3
 data/human_handoffs.sqlite3-*
+# Local deployment data, secrets, approved FAQ data, and persistent databases
+runtime-data/
 __pycache__/
 *.py[cod]

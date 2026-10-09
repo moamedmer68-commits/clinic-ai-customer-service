@@ -1,0 +1,13 @@
+[
+  {
+    "id": "example-approved-entry",
+    "question": "Replace with a clinic-approved question",
+    "keywords": ["example"],
+    "answer": "Replace with the exact answer approved by the clinic.",
+    "source": {
+      "title": "Name of approved clinic document",
+      "reviewed_at": "YYYY-MM-DD",
+      "owner": "Clinic content owner"
+    }
+  }
+]

@@ -1,0 +1,51 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in the deployment environment}
+      API_ACCESS_TOKEN: ${API_ACCESS_TOKEN:?Set a strong API_ACCESS_TOKEN in the deployment environment}
+      ALLOW_UNAUTHENTICATED_LOCAL_DEV: "false"
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o}
+      OPENAI_REQUEST_TIMEOUT_SECONDS: ${OPENAI_REQUEST_TIMEOUT_SECONDS:-30}
+      OPENAI_MAX_RETRIES: ${OPENAI_MAX_RETRIES:-2}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APPOINTMENT_CSV_PATH: /app/runtime-data/doctor_availability.csv
+      CHECKPOINT_DB_PATH: /app/runtime-data/conversations.sqlite3
+      HANDOFF_DB_PATH: /app/runtime-data/human_handoffs.sqlite3
+      FAQ_RAG_INDEX_PATH: /app/runtime-data/faq_index
+    volumes:
+      - ./runtime-data:/app/runtime-data
+      - ./runtime-data/clinic_faq.json:/app/data/clinic_faq.json:ro
+    ports:
+      - "127.0.0.1:8003:8003"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health/ready', timeout=4)"
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["streamlit", "run", "streamlit_ui.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]
+    environment:
+      API_URL: http://api:8003/execute
+      API_ACCESS_TOKEN: ${API_ACCESS_TOKEN:?Set the same API_ACCESS_TOKEN used by the API}
+      API_TIMEOUT_SECONDS: ${API_TIMEOUT_SECONDS:-45}
+      ALLOW_UNAUTHENTICATED_LOCAL_DEV: "false"
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
