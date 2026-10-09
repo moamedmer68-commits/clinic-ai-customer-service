@@ -122,6 +122,9 @@ def create_app() -> FastAPI:
                     "next": "",
                     "query": "",
                     "current_reasoning": "",
+                    "escalation_case_id": "",
+                    "escalation_status": "",
+                    "escalation_trigger": "",
                 },
                 config={"recursion_limit": 20, "configurable": {"thread_id": make_thread_id(user_input.id_number, session_id)}},
             )
@@ -133,7 +136,15 @@ def create_app() -> FastAPI:
             logger.exception("Agent execution failed", extra={"request_id": request.state.request_id})
             return _error_response(request, 500, "agent_execution_failed", "The request could not be processed.")
         logger.info("Agent request completed", extra={"request_id": request.state.request_id})
-        return {"session_id": session_id, "messages": messages, "request_id": request.state.request_id}
+        result_body = {"session_id": session_id, "messages": messages, "request_id": request.state.request_id}
+        escalation_status = response.get("escalation_status")
+        if escalation_status:
+            result_body["escalation"] = {
+                "status": escalation_status,
+                "case_id": response.get("escalation_case_id") or "",
+                "trigger": response.get("escalation_trigger") or "",
+            }
+        return result_body
 
     return api
 

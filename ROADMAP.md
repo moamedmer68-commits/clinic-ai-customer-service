@@ -30,7 +30,7 @@ This document is the source of truth for project scope, phase order, implementat
 | 6 | Conversation Memory | Completed for prototype — API multi-turn/restart persistence, isolation, Streamlit controls, operations guidance verified | 100% |
 | 7 | RAG Knowledge Base | Blocked for real-world activation — semantic RAG implementation, persistent vector index, ingestion, source tracking, and synthetic evaluation verified; clinic-approved corpus remains external dependency | 95% |
 | 8 | Support & Human Escalation | Completed for local-queue prototype — deterministic triggers, privacy-minimized handoff records, status tracking, truthful responses, and tests verified | 100% |
-| 9 | Frontend Chat Experience | In progress — transcript, session controls, validation/error handling exist; UX/accessibility and automated UI verification remain | 75% |
+| 9 | Frontend Chat Experience | Implemented and AppTest verified — transcript, session controls, masked ID validation, service errors, and escalation feedback; manual browser/responsive review remains | 90% |
 | 10 | Production Readiness | In progress — CI checks and local environment exist; deployment/security/operations requirements remain | 25% |
 
 **Percentage note:** These are approximate scope-completion estimates based on implemented and verified roadmap criteria, not test coverage or a claim of production readiness. Phases 5–6 are complete only for prototype scope; their listed production limitations remain in Phase 10.
@@ -141,14 +141,16 @@ This document is the source of truth for project scope, phase order, implementat
 
 ## Phase 9 — Frontend Chat Experience
 **Goal:** Provide clear, accessible multi-turn chat and reliable feedback.
-**Implemented/evidence observed:** basic Streamlit UI exists and calls FastAPI endpoint.
-**Remaining tasks:**
-- [ ] Provide chat transcript and conversation controls beyond the basic form.
-- [ ] Display loading, validation, service errors, tool outcomes, and escalation state.
-- [ ] Preserve session state; support starting a new conversation.
-- [ ] Improve validation, accessibility, responsive layout, and safe rendering.
-- [ ] Add UI tests or documented manual acceptance scenarios.
-**Acceptance criteria:** users complete multi-turn FAQ/appointment tasks with clear status/errors; session behavior verified.
+**Implemented:** Reworked `streamlit_ui.py` with masked patient-ID entry, input bounds validation, chat transcript, loading state, configurable API URL/request timeout, clear service/API error messages, safe Markdown rendering, new-conversation control, and pending human-handoff case display. The API now returns current-invocation escalation status metadata and resets stale escalation state for each new turn. Pure validation/parsing helpers live in `ui_helpers.py`.
+**Tasks:**
+- [x] Provide chat transcript and conversation controls beyond the basic form.
+- [x] Display loading, validation, service errors, tool outcomes, and escalation state.
+- [x] Preserve session state; support starting a new conversation.
+- [ ] Complete manual browser review for responsive layout, keyboard navigation, and real API/Streamlit interaction.
+- [x] Add automated Streamlit AppTest checks and documented manual acceptance scenarios.
+**Verification:** `tests/test_ui_helpers.py`, `tests/test_streamlit_ui.py`, and API metadata tests cover ID validation, response extraction, invalid IDs, successful responses, pending escalation, and new-session behavior. Visual/mobile and real-network smoke tests still require a manual run.
+**Acceptance criteria:** multi-turn behavior and frontend status/error contracts pass automated tests; manual browser/responsive review remains open.
+**Current status:** Implemented for prototype. Manual browser/responsive validation remains; do not claim full accessibility certification.
 
 ## Phase 10 — Production Readiness
 **Goal:** Prepare secure, observable, repeatable deployment and operation.
@@ -290,3 +292,13 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Full verification: `.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp-full2` — 42 passed, 163 warnings. Warnings are existing Starlette/httpx and LangChain/Pydantic deprecations.
 - `data/clinic_faq.json` remains empty by design. No clinic facts were invented and no appointment/patient dataset was changed.
 - Phase 7 implementation is validated, but real-world FAQ activation still depends on clinic-approved FAQ content and content-owner review.
+
+### Phase 9 implementation work — 2026-10-09
+- Reworked `streamlit_ui.py` with masked patient-ID input, API-bound input validation, transcript rendering, loading feedback, configurable API URL and timeout, safe text rendering, helpful API/network errors, session reset, and a pending human-handoff status display.
+- Added `ui_helpers.py` and unit tests for patient-ID bounds, latest assistant response extraction, and validation of escalation metadata.
+- Updated `main.py` to clear previous-turn escalation fields before each invocation and include current handoff status/case metadata in the API response when present.
+- Added `tests/test_streamlit_ui.py` using Streamlit AppTest for invalid IDs, successful response rendering, pending escalation feedback, and new-conversation behavior.
+- Added `docs/STREAMLIT_UI_ACCEPTANCE.md` for manual browser/responsive/keyboard checks; updated the CI compile step to include the UI and support modules.
+- Focused checks: `.venv\\Scripts\\python.exe -m pytest tests\\test_ui_helpers.py tests\\test_api.py tests\\test_handoff.py tests\\test_faq.py tests\\test_knowledge_base.py -q -p no:cacheprovider --basetemp=.pytest-tmp-phase9` — 39 passed, 1 warning. Streamlit AppTest: `tests/test_streamlit_ui.py` — 3 passed.
+- Full verification: `.venv\\Scripts\\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp-phase9-full` — 66 passed, 163 warnings. Compileall passed, `pip check` reported no broken requirements, and `git diff --check` passed (Git only reported line-ending conversion notices).
+- Remaining: visual browser/mobile/responsive and keyboard accessibility review were not performed. This phase is implemented for prototype scope but retains that manual acceptance item.

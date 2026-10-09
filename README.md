@@ -21,7 +21,7 @@ Implemented and tested in this repository:
 - CSV schema/state validation, lock-file coordination, and atomic CSV replacement for local prototype use.
 - FastAPI app with `/health`, `/execute`, request IDs, safe validation errors, and safe dependency/agent failure responses.
 - SQLite conversation memory using hashed patient/session thread keys.
-- Streamlit chat UI with session continuity and new-conversation control.
+- Streamlit chat UI with masked patient-ID input, chat transcript, loading/error feedback, safe text rendering, session reset, configurable API URL/timeout, and pending human-escalation status display.
 - Human escalation prototype with deterministic triggers, privacy-minimized local SQLite handoff queue, case IDs/statuses, and truthful pending responses.
 - Pytest suite and GitHub Actions CI for dependency checks, compile checks, and tests.
 
@@ -67,7 +67,8 @@ Key files:
 - `knowledge_base.py`: FAQ validation, lexical baseline, semantic embeddings, persistent vector indexing, retrieval thresholds, source metadata, and evaluation.
 - `toolkit/toolkits.py`: appointment CSV validation and mutation tools.
 - `main.py`: FastAPI app factory, health check, execution endpoint, SQLite checkpointer.
-- `streamlit_ui.py`: Streamlit chat frontend.
+- `streamlit_ui.py`: Streamlit chat frontend and user-facing error/escalation states.
+- `ui_helpers.py`: independently tested patient-ID validation, response extraction, and escalation metadata parsing.
 - `support/handoff.py`: local human-handoff queue, trigger detection, redacted summaries, and case lifecycle helpers.
 - `docs/`: operations notes for FAQ content, knowledge retrieval, memory, human escalation, and CI/CD.
 - `tests/`: synthetic unit/API/integration tests.
@@ -89,6 +90,8 @@ LOG_LEVEL=INFO
 FAQ_EMBEDDING_MODEL=text-embedding-3-small
 FAQ_RAG_INDEX_PATH=data/faq_index
 HANDOFF_DB_PATH=data/human_handoffs.sqlite3
+API_URL=http://127.0.0.1:8003/execute
+API_TIMEOUT_SECONDS=45
 ```
 
 For tests, fixtures and monkeypatches avoid real OpenAI calls and avoid mutating canonical data.

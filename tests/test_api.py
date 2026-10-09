@@ -24,6 +24,18 @@ class StructuredMessageGraph:
         return {"messages": [SimpleNamespace(type="ai", content={"answer": "Hello"})]}
 
 
+class EscalationGraph:
+    def invoke(self, payload, config):
+        assert payload["escalation_status"] == ""
+        assert payload["escalation_case_id"] == ""
+        return {
+            "messages": [SimpleNamespace(type="ai", content="Case is pending review.")],
+            "escalation_case_id": "HND-20261009-ABC123",
+            "escalation_status": "pending",
+            "escalation_trigger": "human_requested",
+        }
+
+
 def test_health_reports_missing_configuration_without_exposing_details(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with TestClient(create_app()) as client:
@@ -86,3 +98,16 @@ def test_execute_serializes_json_compatible_message_content(monkeypatch):
         response = client.post("/execute", json={"id_number": 1234567, "messages": "hello"})
     assert response.status_code == 200
     assert response.json()["messages"] == [{"type": "ai", "content": {"answer": "Hello"}}]
+
+
+def test_execute_returns_handoff_status_for_frontend(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with TestClient(create_app()) as client:
+        client.app.state.graph = EscalationGraph()
+        response = client.post("/execute", json={"id_number": 1234567, "messages": "connect me to a person"})
+    assert response.status_code == 200
+    assert response.json()["escalation"] == {
+        "status": "pending",
+        "case_id": "HND-20261009-ABC123",
+        "trigger": "human_requested",
+    }
