@@ -1,0 +1,19 @@
+date_slot,specialization,doctor_name,is_available,patient_to_attend
+12-10-2026 09:00,general_dentist,john doe,True,
+12-10-2026 09:30,general_dentist,john doe,False,9100001
+12-10-2026 10:00,general_dentist,john doe,True,
+12-10-2026 11:00,orthodontist,jane smith,True,
+12-10-2026 11:30,orthodontist,jane smith,False,9100002
+13-10-2026 09:00,pediatric_dentist,emily johnson,True,
+13-10-2026 09:30,pediatric_dentist,emily johnson,True,
+13-10-2026 10:00,cosmetic_dentist,sarah wilson,True,
+13-10-2026 10:30,cosmetic_dentist,sarah wilson,False,9100003
+14-10-2026 12:00,oral_surgeon,michael green,True,
+14-10-2026 12:30,oral_surgeon,michael green,True,
+14-10-2026 13:00,prosthodontist,lisa brown,True,
+14-10-2026 13:30,prosthodontist,lisa brown,False,9100004
+15-10-2026 15:00,emergency_dentist,daniel miller,True,
+15-10-2026 15:30,emergency_dentist,daniel miller,True,
+16-10-2026 10:00,general_dentist,robert martinez,True,
+16-10-2026 10:30,general_dentist,robert martinez,False,9100005
+16-10-2026 11:00,general_dentist,susan davis,True,

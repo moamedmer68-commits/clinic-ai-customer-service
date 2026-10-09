@@ -21,16 +21,17 @@ The shared API token is a prototype service credential, not patient authenticati
 - requirements-runtime.txt contains the small pinned dependency set for the supported API/UI runtime.
 - requirements-test.txt layers the pinned test runner and HTTP test client on top.
 - The historical requirements.txt remains the broader research environment with optional ML/CV and integration packages; CI and the container build use the runtime-specific files to avoid unrelated heavy native dependencies.
+- `CLINIC_FAQ_PATH` now selects the FAQ source explicitly. Compose points it at `/app/runtime-data/clinic_faq.json`; the default local path remains `data/clinic_faq.json`.
 - GitHub Actions checks dependency consistency, compiles modules, runs the full test suite, and builds the container image.
 
 ## Local container scaffold
 
 Required host setup before running docker compose up --build:
 
-1. Create the ignored runtime-data/ directory.
-2. Copy deployment/clinic_faq.example.json to runtime-data/clinic_faq.json, then replace the placeholders with facts explicitly approved by the clinic owner.
-3. Provision runtime-data/doctor_availability.csv only from an approved, current clinic source. Do not copy the historical repository CSV into deployment.
-4. Set OPENAI_API_KEY and a strong API_ACCESS_TOKEN in the local .env file or deployment secret store.
+1. For a disposable local demo only, run `deployment/prepare_demo_data.ps1`. It copies clearly labelled fake FAQ and appointment slots into ignored `runtime-data/`, requires explicit confirmation, and refuses to overwrite an existing runtime-data directory. Read `deployment/demo_data/README.md` first.
+2. For a real-clinic deployment, do not use the demo kit. Create runtime-data/clinic_faq.json from facts explicitly approved by the clinic owner, or copy deployment/clinic_faq.example.json and replace all placeholders with reviewed facts.
+3. Provision runtime-data/doctor_availability.csv only from an approved, current clinic source. Do not copy the historical repository CSV or synthetic demo CSV into a real-clinic deployment.
+4. Set OPENAI_API_KEY and a strong API_ACCESS_TOKEN in the local .env file or deployment secret store; never commit secrets.
 5. Ensure the mounted runtime-data/ is writable by the container user and adequately backed up.
 
 Compose binds the API and UI ports to 127.0.0.1 by default. The image excludes .env, tests, notebooks, scratch files, and appointment CSV data. It runs as an unprivileged user. Runtime data is mounted outside the image so it can be provisioned and persisted independently.

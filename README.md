@@ -4,7 +4,7 @@ A prototype multi-agent clinic customer-service system built with LangGraph, Lan
 
 The system handles two separate domains:
 
-- FAQ/knowledge questions use approved entries in `data/clinic_faq.json` through semantic embedding retrieval with a persisted local vector index and grounded no-answer behavior.
+- FAQ/knowledge questions use the configured `CLINIC_FAQ_PATH` through semantic embedding retrieval with a persisted local vector index and grounded no-answer behavior. The default remains `data/clinic_faq.json`.
 - Appointment availability, booking, cancellation, and rescheduling use structured tools in `toolkit/toolkits.py` against the configured appointment CSV.
 
 Do not mix these paths. Appointment availability is transactional operational state, not FAQ/RAG content.
@@ -14,7 +14,7 @@ Do not mix these paths. Appointment availability is transactional operational st
 Implemented and tested in this repository:
 
 - Supervisor routing for FAQ, availability, book, cancel, reschedule, and fallback intents.
-- Dedicated FAQ node with grounded answers from `data/clinic_faq.json`, source IDs when present, and explicit no-answer behavior.
+- Dedicated FAQ node with grounded answers from the configured `CLINIC_FAQ_PATH` (defaults to `data/clinic_faq.json`), source IDs when present, and explicit no-answer behavior.
 - Medical-advice boundary response for FAQ requests.
 - Availability lookup by doctor or specialization.
 - Guarded appointment booking, cancellation, and atomic rescheduling.
@@ -40,6 +40,8 @@ Not implemented:
 `data/doctor_availability.csv` is historical legacy appointment data from the prototype. It must not be presented as current live clinic availability unless an authorized operator has refreshed and approved it.
 
 Tests must use synthetic fixtures or temporary files. Do not replace `data/doctor_availability.csv` with `tests/fixtures/synthetic_appointments.csv`.
+
+A separate disposable fake-data kit lives in `deployment/demo_data/`. Run `.\deployment\prepare_demo_data.ps1` in PowerShell to populate an ignored `runtime-data/` directory for a local Compose demo. The script requires explicit confirmation and refuses to overwrite an existing `runtime-data/`. All demo FAQ answers and appointment slots are fake, and must never be described as real clinic policies or live availability. Details: `deployment/demo_data/README.md`.
 
 `data/clinic_faq.json` must contain only clinic-approved facts. Do not infer hours, address, services, pricing, insurance, or policies from appointment-slot data.
 
@@ -91,6 +93,7 @@ Optional:
 
 ```text
 APPOINTMENT_CSV_PATH=path/to/appointments.csv
+CLINIC_FAQ_PATH=path/to/clinic_faq.json
 CHECKPOINT_DB_PATH=data/conversations.sqlite3
 LOG_LEVEL=INFO
 FAQ_EMBEDDING_MODEL=text-embedding-3-small
@@ -137,13 +140,13 @@ Start the UI:
 streamlit run streamlit_ui.py
 ```
 
-Raw API example:
+Raw API example (for the disposable demo schedule only; the default legacy CSV is not a live schedule):
 
 ```bash
 curl -X POST http://127.0.0.1:8003/execute ^
   -H "Content-Type: application/json" ^
   -H "X-API-Key: YOUR_API_ACCESS_TOKEN" ^
-  -d "{\"id_number\": 1234567, \"session_id\": \"demo\", \"messages\": \"Is john doe available on 08-08-2024?\"}"
+  -d "{\"id_number\": 9123456, \"session_id\": \"demo\", \"messages\": \"Is john doe available on 12-10-2026?\"}"
 ```
 
 Use only synthetic/test patient IDs for local testing.

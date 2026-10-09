@@ -1,0 +1,62 @@
+[
+  {
+    "id": "demo-hours",
+    "question": "What are the clinic opening hours?",
+    "keywords": ["open", "opening", "hours", "schedule", "when"],
+    "answer": "DEMO ONLY — FAKE DATA, NOT CLINIC-APPROVED: The synthetic example is configured to show weekday hours from 09:00 to 17:00. These invented hours must not be used to plan a real visit.",
+    "source": {
+      "title": "Synthetic demo FAQ — NOT clinic-approved",
+      "owner": "Automatically generated fake data; not reviewed by a clinic"
+    }
+  },
+  {
+    "id": "demo-address",
+    "question": "What is the clinic address?",
+    "keywords": ["address", "location", "where", "map"],
+    "answer": "DEMO ONLY — FAKE DATA, NOT CLINIC-APPROVED: The example address is 123 Example Street, Demo City. This is a fictional placeholder, not a real clinic address.",
+    "source": {
+      "title": "Synthetic demo FAQ — NOT clinic-approved",
+      "owner": "Automatically generated fake data; not reviewed by a clinic"
+    }
+  },
+  {
+    "id": "demo-booking",
+    "question": "How do I book an appointment?",
+    "keywords": ["book", "booking", "appointment", "reserve", "schedule"],
+    "answer": "DEMO ONLY — FAKE DATA, NOT CLINIC-APPROVED: For this software demonstration, ask to check a sample slot and then explicitly confirm before any test booking. All slots in this demo are fabricated and are not real clinic availability.",
+    "source": {
+      "title": "Synthetic demo FAQ — NOT clinic-approved",
+      "owner": "Automatically generated fake data; not reviewed by a clinic"
+    }
+  },
+  {
+    "id": "demo-cancellation",
+    "question": "How can I cancel or reschedule an appointment?",
+    "keywords": ["cancel", "cancellation", "reschedule", "change", "appointment"],
+    "answer": "DEMO ONLY — FAKE DATA, NOT CLINIC-APPROVED: Cancellation and rescheduling can be exercised using a fake test booking in the synthetic schedule. Do not use this demo to make changes to any real appointment.",
+    "source": {
+      "title": "Synthetic demo FAQ — NOT clinic-approved",
+      "owner": "Automatically generated fake data; not reviewed by a clinic"
+    }
+  },
+  {
+    "id": "demo-insurance",
+    "question": "Which insurance plans are accepted?",
+    "keywords": ["insurance", "coverage", "plan", "payment"],
+    "answer": "DEMO ONLY — FAKE DATA, NOT CLINIC-APPROVED: Insurance coverage and payment policies are intentionally unspecified. This demo cannot confirm coverage for any person or plan.",
+    "source": {
+      "title": "Synthetic demo FAQ — NOT clinic-approved",
+      "owner": "Automatically generated fake data; not reviewed by a clinic"
+    }
+  },
+  {
+    "id": "demo-services",
+    "question": "Which services can I search for in the demo?",
+    "keywords": ["service", "specialty", "specialization", "dentist", "orthodontics"],
+    "answer": "DEMO ONLY — FAKE DATA, NOT CLINIC-APPROVED: The synthetic schedule includes dental specialty labels only to exercise search and booking workflows. It does not describe services offered by a real clinic.",
+    "source": {
+      "title": "Synthetic demo FAQ — NOT clinic-approved",
+      "owner": "Automatically generated fake data; not reviewed by a clinic"
+    }
+  }
+]

@@ -216,7 +216,8 @@ class DoctorAppointmentAgent:
                 "No human-support case was created. Please contact a qualified healthcare professional for medical advice."
             )
         else:
-            faq_path = Path(__file__).resolve().parent / "data" / "clinic_faq.json"
+            default_faq_path = Path(__file__).resolve().parent / "data" / "clinic_faq.json"
+            faq_path = Path(os.getenv("CLINIC_FAQ_PATH", str(default_faq_path))).expanduser()
             try:
                 match = retrieve_semantic_faq(
                     query,

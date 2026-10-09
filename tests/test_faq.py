@@ -78,3 +78,28 @@ def test_faq_intent_routes_to_dedicated_faq_node():
 
     assert command.goto == "faq_node"
     assert command.update["next"] == "faq_node"
+
+
+def test_faq_node_honors_clinic_faq_path_for_local_demo(tmp_path, monkeypatch):
+    configured_path = tmp_path / "synthetic" / "clinic_faq.json"
+    monkeypatch.setenv("CLINIC_FAQ_PATH", str(configured_path))
+    monkeypatch.setenv("FAQ_RAG_INDEX_PATH", str(tmp_path / "synthetic" / "faq_index"))
+    captured = {}
+
+    def fake_retrieve(query, **kwargs):
+        captured.update(kwargs)
+        return FAQMatch(
+            answer="DEMO ONLY — FAKE DATA, NOT CLINIC-APPROVED: Synthetic answer.",
+            question="A synthetic demo question?",
+            score=0.99,
+            source_id="demo-test",
+        )
+
+    monkeypatch.setattr(agent_module, "retrieve_semantic_faq", fake_retrieve)
+    service = DoctorAppointmentAgent(llm_model=UnusedLLM())
+    result = service.faq_node({"query": "A synthetic demo question?", "messages": []})
+
+    assert captured["source_path"] == configured_path
+    assert captured["index_dir"] == tmp_path / "synthetic" / "faq_index"
+    assert "DEMO ONLY" in result.update["messages"][0].content
+    assert "Source: demo-test" in result.update["messages"][0].content
