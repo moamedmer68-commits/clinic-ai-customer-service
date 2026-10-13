@@ -301,6 +301,36 @@ def build_semantic_index(
     )
 
 
+def validate_faq_source(source_path: str | Path, *, allow_empty: bool = False) -> list[dict[str, Any]]:
+    """Strictly validate an FAQ source before indexing it.
+
+    Unlike the runtime loader (which safely filters bad records and can represent
+    an intentionally empty knowledge base), this preflight rejects missing,
+    malformed, partially invalid, or unexpectedly empty files so a content
+    publishing command cannot silently build an empty/partial index.
+    """
+    source = Path(source_path)
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8-sig"))
+    except OSError as exc:
+        raise ValueError(f"FAQ source cannot be read: {source}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"FAQ source is not valid JSON: {source} (line {exc.lineno}, column {exc.colno})") from exc
+
+    if not isinstance(payload, list):
+        raise ValueError("FAQ source must contain a JSON list of records")
+    if not payload and not allow_empty:
+        raise ValueError("FAQ source is empty; add clinic-approved entries before building the index")
+
+    entries = [_validated_entry(item) for item in payload]
+    invalid_count = sum(entry is None for entry in entries)
+    if invalid_count:
+        raise ValueError(
+            f"FAQ source contains {invalid_count} invalid record(s); every record must have non-empty question and answer strings"
+        )
+    return [entry for entry in entries if entry is not None]
+
+
 def ingest_faq(
     source_path: str | Path,
     index_dir: str | Path = DEFAULT_INDEX_DIR,
@@ -310,7 +340,7 @@ def ingest_faq(
 ) -> SemanticFAQIndex:
     """Validate, embed, and persist the approved FAQ corpus."""
     source = Path(source_path)
-    entries = load_faq(source)
+    entries = validate_faq_source(source)
     index = build_semantic_index(
         entries,
         embedding_model=embedding_model,
@@ -478,7 +508,10 @@ def _cli() -> int:
     parser.add_argument("--index-dir", default=DEFAULT_INDEX_DIR)
     parser.add_argument("--model", default=os.getenv("FAQ_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL))
     args = parser.parse_args()
-    index = ingest_faq(args.source, args.index_dir, model_name=args.model)
+    try:
+        index = ingest_faq(args.source, args.index_dir, model_name=args.model)
+    except ValueError as exc:
+        parser.exit(2, f"FAQ validation failed: {exc}\n")
     print(json.dumps({
         "source": str(args.source),
         "index_dir": str(args.index_dir),

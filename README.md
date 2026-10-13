@@ -162,7 +162,7 @@ Focused Phase 7/8 checks:
 python -m pytest tests/test_handoff.py tests/test_knowledge_base.py tests/test_faq.py tests/test_routing.py -q -p no:cacheprovider
 ```
 
-Build the semantic FAQ index after supplying approved clinic content:
+Validate the FAQ source and build the semantic index after supplying approved clinic content (the repository's empty placeholder intentionally fails this command):
 
 ```bash
 python -m knowledge_base --source data/clinic_faq.json --index-dir data/faq_index

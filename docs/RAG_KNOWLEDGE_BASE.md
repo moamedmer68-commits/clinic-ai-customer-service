@@ -23,13 +23,13 @@ The default persistent index location is `data/faq_index`. Override it with `FAQ
 
 ## Ingestion
 
-Build or rebuild the vector index with:
+Run the strict preflight and build/rebuild the vector index with:
 
 ```powershell
 .\.venv\Scripts\python.exe -m knowledge_base --source data\clinic_faq.json --index-dir data\faq_index
 ```
 
-Only clinic-approved FAQ content may be indexed. The ingestion process is content-hash aware and rebuilds the index when the validated FAQ corpus changes.
+Only clinic-approved FAQ content may be indexed. The ingestion command now rejects missing/unreadable sources, malformed JSON, non-list JSON, invalid records, and empty files before writing an index. It cannot silently turn a partial or empty FAQ source into a successful content publish. The ingestion process is content-hash aware and rebuilds the index when the validated FAQ corpus changes.
 
 The application also performs lazy load/build when semantic FAQ retrieval needs an index. This is convenient for the local prototype; production deployment should build the index as a controlled deployment/content-update step rather than during a patient request.
 

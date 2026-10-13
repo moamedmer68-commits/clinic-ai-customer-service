@@ -25,7 +25,7 @@ This document is the source of truth for project scope, phase order, implementat
 | 1 | Data Integrity | Completed — CSV invariants, guarded mutations, and tests verified | 100% |
 | 2 | Backend Reliability & Error Handling | Completed — API contract, safe errors, correlation, and tests verified | 100% |
 | 3 | Customer Service Core & Intent Routing | Completed — explicit routing, clarification, bounded execution, and tests verified | 100% |
-| 4 | FAQ Agent | In progress — grounded FAQ logic/tests and content guide exist; clinic-approved facts remain missing | 83% |
+| 4 | FAQ Agent | Software scope completed — strict source preflight, grounded retrieval, safe no-answer handoff, and tests verified; activation on real clinic facts remains blocked pending owner-approved content | 100% software scope |
 | 5 | Appointment Agent Integration | Completed for prototype — specialist tools, confirmation instructions, routing/integration and mutation tests verified | 100% |
 | 6 | Conversation Memory | Completed for prototype — API multi-turn/restart persistence, isolation, Streamlit controls, operations guidance verified | 100% |
 | 7 | RAG Knowledge Base | Blocked for real-world activation — semantic RAG implementation, persistent vector index, ingestion, source tracking, and synthetic evaluation verified; clinic-approved corpus remains external dependency | 95% |
@@ -84,6 +84,7 @@ This document is the source of truth for project scope, phase order, implementat
 **Current status:** Completed. Focused routing tests passed on 2026-09-29; full-suite verification is recorded below.
 
 ## Phase 4 — FAQ Agent
+**Exit update — 2026-10-13:** Completed the remaining software-side content-publishing safeguard. `validate_faq_source()` now rejects missing/unreadable files, malformed JSON, non-list payloads, empty corpora, and any invalid record; `ingest_faq()` uses it before embedding/saving, so a bad source cannot be silently published as a partial/empty index. Added tests for each failure class and normalized valid metadata. Existing retrieval, source IDs, thresholded no-answer behavior, escalation, and synthetic evaluation remain covered. Real-world FAQ activation is still blocked until a clinic owner supplies and approves the actual facts; the canonical `data/clinic_faq.json` remains intentionally empty.
 **Goal:** Answer clinic service questions from approved, maintained clinic information.
 **Data review (2026-09-29):** `data/` contains `doctor_availability.csv` (columns: `date_slot`, `specialization`, `doctor_name`, `is_available`, `patient_to_attend`; 4,280 data rows) and no authoritative clinic FAQ facts. The appointment CSV is used by appointment availability/booking workflows and is not treated as a source for clinic hours, address, fees, insurance, or policies. No patient row values were copied into FAQ content.
 **Implemented:** Dedicated `faq_node` receives FAQ intent; it reads approved entries from `data/clinic_faq.json`, matches question/keyword terms, returns configured answer text, and safely defers unknown questions. Medical-advice terms trigger a boundary response. FAQ routing is distinct from availability routing. The JSON file is currently an empty list because clinic facts have not been provided/verified.
@@ -93,7 +94,7 @@ This document is the source of truth for project scope, phase order, implementat
 - [x] Ground answers in configured content; do not invent clinic policies or provide unsupported medical advice.
 - [x] Test known answers, paraphrases, missing answers, medical-advice boundary, and supervisor routing.
 - [ ] Populate and verify authoritative FAQ content (hours, location, services, policies, preparation, payment/insurance if applicable).
-- [ ] Document the content update process for clinic operators.
+- [x] Document the content update process for clinic operators, including strict preflight and index-build commands.
 **Acceptance criteria:** answers supported by configured source content; unknown answers transparently deferred; routing/tests pass; clinic content approved. The final content approval criterion remains open.
 **Verification:** `python -m pytest tests/test_faq.py tests/test_routing.py -q -p no:cacheprovider` — 8 passed. Full `python -m pytest -q -p no:cacheprovider` — 29 passed, 73 warnings. A pytest temporary-directory cleanup emitted a Windows `PermissionError` during interpreter shutdown after tests; pytest exit code was 0. Existing Starlette/httpx and Pydantic deprecation warnings remain.
 ## Phase 5 — Appointment Agent Integration

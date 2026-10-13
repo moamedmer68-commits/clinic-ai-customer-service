@@ -12,6 +12,7 @@ from knowledge_base import (
     load_or_build_faq_index,
     retrieve_faq,
     retrieve_semantic_faq,
+    validate_faq_source,
 )
 
 
@@ -70,6 +71,72 @@ def test_rejects_low_evidence_and_empty_queries():
     assert retrieve_faq("insurance policy", entries) is None
     assert retrieve_faq("???", entries) is None
     assert retrieve_faq("what is the and are", entries) is None
+
+
+def test_strict_faq_preflight_accepts_valid_entries_and_normalizes_metadata(tmp_path):
+    path = tmp_path / "approved-faq.json"
+    path.write_text(json.dumps([
+        {
+            "id": "hours",
+            "question": " Clinic hours? ",
+            "answer": " Approved answer. ",
+            "keywords": [" open ", ""],
+            "source": {"title": "Reviewed source", "owner": "Clinic content owner"},
+        }
+    ]), encoding="utf-8")
+
+    assert validate_faq_source(path) == [{
+        "id": "hours",
+        "question": "Clinic hours?",
+        "answer": "Approved answer.",
+        "keywords": ["open"],
+        "source": {"title": "Reviewed source", "owner": "Clinic content owner"},
+    }]
+
+
+def test_strict_faq_preflight_rejects_empty_missing_malformed_and_partial_sources(tmp_path):
+    import pytest
+
+    empty = tmp_path / "empty.json"
+    empty.write_text("[]", encoding="utf-8")
+    with pytest.raises(ValueError, match="empty"):
+        validate_faq_source(empty)
+
+    missing = tmp_path / "missing.json"
+    with pytest.raises(ValueError, match="cannot be read"):
+        validate_faq_source(missing)
+
+    malformed = tmp_path / "malformed.json"
+    malformed.write_text("{broken", encoding="utf-8")
+    with pytest.raises(ValueError, match="valid JSON"):
+        validate_faq_source(malformed)
+
+    not_a_list = tmp_path / "object.json"
+    not_a_list.write_text('{"question":"Q","answer":"A"}', encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON list"):
+        validate_faq_source(not_a_list)
+
+    partial = tmp_path / "partial.json"
+    partial.write_text(json.dumps([
+        {"question": "Valid?", "answer": "Yes."},
+        {"question": "Missing answer?"},
+    ]), encoding="utf-8")
+    with pytest.raises(ValueError, match="1 invalid record"):
+        validate_faq_source(partial)
+
+
+def test_faq_ingestion_rejects_empty_source_without_creating_index(tmp_path):
+    import pytest
+
+    source = tmp_path / "empty.json"
+    source.write_text("[]", encoding="utf-8")
+    index_dir = tmp_path / "index"
+
+    with pytest.raises(ValueError, match="empty"):
+        from knowledge_base import ingest_faq
+        ingest_faq(source, index_dir, embedding_model=FakeEmbeddings())
+
+    assert not index_dir.exists()
 
 
 def test_loader_fails_closed_filters_invalid_records_and_normalizes_metadata(tmp_path):
