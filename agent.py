@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, Literal
@@ -13,7 +14,15 @@ from langchain_core.messages import AIMessage, HumanMessage
 from prompt_library.prompt import system_prompt
 from utils.llms import LLMModel
 from toolkit.toolkits import *
-from knowledge_base import load_faq, retrieve_faq
+from knowledge_base import retrieve_semantic_faq
+from support.pending_actions import build_prepare_tool
+from support.handoff import (
+    HandoffError,
+    create_handoff_case,
+    detect_escalation_trigger,
+    format_handoff_failure,
+    format_handoff_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +39,10 @@ class AgentState(TypedDict):
     query: str
     current_reasoning: str
     intent: str
+    escalation_case_id: str
+    escalation_status: str
+    escalation_trigger: str
+    thread_ref: str
 
 
 INTENT_DESTINATIONS = {
@@ -88,7 +101,18 @@ def _last_message_is_worker_response(messages: list[Any]) -> bool:
     if not messages:
         return False
     last_message = messages[-1]
-    return isinstance(last_message, AIMessage) and getattr(last_message, "name", None) in {"faq_node", "information_node", "booking_node"}
+    return isinstance(last_message, AIMessage) and getattr(last_message, "name", None) in {"faq_node", "information_node", "booking_node", "escalation_node"}
+
+
+def _escalate(messages: list[Any], trigger: str, thread_ref: str | None = None) -> tuple[dict[str, str] | None, str]:
+    try:
+        case = create_handoff_case(messages, trigger, thread_ref=thread_ref)
+    except HandoffError as exc:
+        logger.error("Human handoff persistence failed: %s", type(exc).__name__)
+        return None, format_handoff_failure()
+    logger.info("Human handoff case created with status %s", case["status"])
+    return case, format_handoff_response(case)
+
 
 class DoctorAppointmentAgent:
     def __init__(self, llm_model=None):
@@ -114,6 +138,21 @@ class DoctorAppointmentAgent:
                     "messages": [AIMessage(content=FALLBACK_CLARIFICATION, name="supervisor")],
                 },
             )
+
+        escalation_trigger = detect_escalation_trigger(query)
+        if escalation_trigger:
+            case, response_text = _escalate(state["messages"], escalation_trigger)
+            update = {
+                "next": END,
+                "intent": "escalation",
+                "query": query,
+                "current_reasoning": f"Escalation triggered by {escalation_trigger}.",
+                "escalation_case_id": case["case_id"] if case else "",
+                "escalation_status": case["status"] if case else "failed",
+                "escalation_trigger": escalation_trigger,
+                "messages": [AIMessage(content=response_text, name="escalation_node")],
+            }
+            return Command(goto=END, update=update)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -156,15 +195,69 @@ class DoctorAppointmentAgent:
         medical_terms = {"diagnose", "diagnosis", "symptom", "symptoms", "pain", "swollen", "bleeding", "infection", "medicine", "medication", "dosage", "treatment"}
         query_terms = set(re.findall(r"[a-z0-9]+", normalized))
         if query_terms & medical_terms:
-            answer = ("I can share clinic service information, but I can’t diagnose symptoms or recommend "
-                      "treatment. Please contact a qualified healthcare professional for medical advice.")
-        else:
-            faq_path = Path(__file__).resolve().parent / "data" / "clinic_faq.json"
-            match = retrieve_faq(query, load_faq(faq_path))
-            answer = match.answer if match else (
-                "I don’t have a verified answer to that clinic question yet. Please contact the clinic directly "
-                "or ask about doctor availability or appointment booking."
+            case, response_text = _escalate(state.get("messages", []), "medical_advice_request")
+            if case:
+                answer = (
+                    "I can share clinic service information, but I can’t diagnose symptoms or recommend treatment. "
+                    "For this sensitive request, I’ve escalated the case to the clinic support queue. "
+                    f"Your case ID is {case['case_id']}. The current status is pending human review. "
+                    "I have not received a human response yet."
+                )
+                escalation_update = {
+                    "escalation_case_id": case["case_id"],
+                    "escalation_status": case["status"],
+                    "escalation_trigger": "medical_advice_request",
+                    "next": "escalation_node",
+                }
+                return Command(
+                    update={"messages": [AIMessage(content=answer, name="escalation_node")], **escalation_update},
+                    goto="supervisor",
+                )
+            answer = (
+                "I can share clinic service information, but I can’t diagnose symptoms or recommend treatment. "
+                "No human-support case was created. Please contact a qualified healthcare professional for medical advice."
             )
+        else:
+            default_faq_path = Path(__file__).resolve().parent / "data" / "clinic_faq.json"
+            faq_path = Path(os.getenv("CLINIC_FAQ_PATH", str(default_faq_path))).expanduser()
+            try:
+                match = retrieve_semantic_faq(
+                    query,
+                    source_path=faq_path,
+                    index_dir=Path(os.getenv("FAQ_RAG_INDEX_PATH", str(faq_path.parent / "faq_index"))),
+                )
+            except Exception as exc:
+                logger.warning("Semantic FAQ retrieval failed; requesting human support: %s", type(exc).__name__)
+                match = None
+                trigger = "faq_retrieval_error"
+                case, response_text = _escalate(state.get("messages", []), trigger)
+                return Command(
+                    update={
+                        "messages": [AIMessage(content=response_text, name="escalation_node")],
+                        "escalation_case_id": case["case_id"] if case else "",
+                        "escalation_status": case["status"] if case else "failed",
+                        "escalation_trigger": trigger,
+                        "next": "escalation_node",
+                    },
+                    goto="supervisor",
+                )
+            if match and match.source_id:
+                answer = f"{match.answer}\n\nSource: {match.source_id}"
+            elif match:
+                answer = match.answer
+            else:
+                trigger = "unresolved_faq"
+                case, response_text = _escalate(state.get("messages", []), trigger)
+                return Command(
+                    update={
+                        "messages": [AIMessage(content=response_text, name="escalation_node")],
+                        "escalation_case_id": case["case_id"] if case else "",
+                        "escalation_status": case["status"] if case else "failed",
+                        "escalation_trigger": trigger,
+                        "next": "escalation_node",
+                    },
+                    goto="supervisor",
+                )
         return Command(update={"messages": [AIMessage(content=answer, name="faq_node")]}, goto="supervisor")
 
     def information_node(self, state: AgentState) -> Command[Literal['supervisor']]:
@@ -204,9 +297,10 @@ class DoctorAppointmentAgent:
         system_prompt = f"""You are the clinic appointment specialist. Use only the supplied appointment tools.
 Required information: exact doctor name, complete date and time, and patient ID (provided by the application).
 Ask a clarification question before calling a tool if any required detail is missing or ambiguous. Never infer a year.
-Before booking, cancelling, or rescheduling, clearly state the exact action and appointment details and ask the patient to confirm.
-Do not call a mutation tool until the patient has explicitly confirmed that exact action/details in the conversation.
-After a tool call, report its actual result faithfully. Claim success only when the tool returns its explicit success result; explain unavailable slots, unmatched appointments, and data-service errors without claiming a change.
+You have read-only availability tools and prepare_appointment_change. You do NOT have direct booking, cancellation, or rescheduling tools.
+When the patient requests a fully specified mutation, call prepare_appointment_change with the exact details. This only stores a pending proposal; it does not change the appointment schedule.
+Clearly restate the exact action and details from the tool result, then ask the patient to reply with a separate, exact YES to confirm or NO to decline. Never claim a mutation happened merely because it was prepared or because the user said yes before a pending action existed.
+The API alone executes the stored pending action after an exact confirmation in the same patient/session thread. Do not invent tool results or claim success before the API reports it.
 Never expose the patient's ID in the response. The patient's ID supplied by the application is {state['id_number']}."""
         
         system_prompt = ChatPromptTemplate.from_messages(
@@ -221,7 +315,8 @@ Never expose the patient's ID in the response. The patient's ID supplied by the 
                     ),
                 ]
             )
-        booking_agent = create_react_agent(model=self.llm_model,tools=[check_availability_by_doctor, check_availability_by_specialization, set_appointment,cancel_appointment,reschedule_appointment],prompt=system_prompt)
+        prepare_tool = build_prepare_tool(state.get("thread_ref", ""))
+        booking_agent = create_react_agent(model=self.llm_model,tools=[check_availability_by_doctor, check_availability_by_specialization, prepare_tool],prompt=system_prompt)
 
         result = booking_agent.invoke(state)
         

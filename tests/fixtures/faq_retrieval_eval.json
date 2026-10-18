@@ -1,0 +1,18 @@
+[
+  {
+    "query": "When is the clinic open?",
+    "expected_source_id": "clinic-hours"
+  },
+  {
+    "query": "What insurance coverage do you accept?",
+    "expected_source_id": "insurance"
+  },
+  {
+    "query": "How do I cancel my appointment?",
+    "expected_source_id": "cancellation"
+  },
+  {
+    "query": "Do you provide pediatric orthodontics?",
+    "expected_source_id": null
+  }
+]

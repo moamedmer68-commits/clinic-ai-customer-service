@@ -33,10 +33,10 @@ def build_memory_graph(db_path):
     return builder.compile(checkpointer=saver), connection
 
 
-def test_api_preserves_turns_and_isolates_patient_and_session(monkeypatch, tmp_path):
+def test_api_preserves_turns_and_isolates_patient_and_session(monkeypatch, tmp_path, authorized_test_client):
     db_path = tmp_path / "memory.sqlite3"
     monkeypatch.setattr(main, "_build_graph", lambda: build_memory_graph(db_path))
-    with TestClient(main.create_app()) as client:
+    with authorized_test_client(main.create_app()) as client:
         first = client.post("/execute", json={"id_number": 1234567, "messages": "I need a dentist", "session_id": "visit-a"})
         second = client.post("/execute", json={"id_number": 1234567, "messages": "At 10 tomorrow", "session_id": "visit-a"})
         separate_session = client.post("/execute", json={"id_number": 1234567, "messages": "New topic", "session_id": "visit-b"})
@@ -47,13 +47,13 @@ def test_api_preserves_turns_and_isolates_patient_and_session(monkeypatch, tmp_p
     assert [m["content"] for m in separate_patient.json()["messages"] if m["type"] == "human"] == ["Private topic"]
 
 
-def test_api_memory_survives_application_restart(monkeypatch, tmp_path):
+def test_api_memory_survives_application_restart(monkeypatch, tmp_path, authorized_test_client):
     db_path = tmp_path / "restart.sqlite3"
     monkeypatch.setattr(main, "_build_graph", lambda: build_memory_graph(db_path))
     payload = {"id_number": 1234567, "session_id": "persistent-session"}
-    with TestClient(main.create_app()) as first_client:
+    with authorized_test_client(main.create_app()) as first_client:
         first = first_client.post("/execute", json={**payload, "messages": "remember this"})
-    with TestClient(main.create_app()) as second_client:
+    with authorized_test_client(main.create_app()) as second_client:
         second = second_client.post("/execute", json={**payload, "messages": "continue"})
     assert first.status_code == second.status_code == 200
     human_turns = [m["content"] for m in second.json()["messages"] if m["type"] == "human"]
