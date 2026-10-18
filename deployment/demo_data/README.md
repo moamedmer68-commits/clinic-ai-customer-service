@@ -1,9 +1,10 @@
-# Synthetic demo data — NOT real clinic data
+# Synthetic demo data â€” NOT real clinic data
 
 This directory contains intentionally fabricated content for local software demonstrations and automated testing only.
 
-- `clinic_faq.json`: six clearly labelled sample FAQ answers. None is clinic-approved.
-- `doctor_availability.csv`: 18 synthetic appointment slots with generic demo doctor names and test-only patient IDs (`9100001`–`9100005`). These are not real people, bookings, or availability.
+- `clinic_faq.json`: 26 clearly labelled synthetic FAQ records (13 English and 13 Arabic) covering 13 topics. None is clinic-approved.
+- `tests/fixtures/synthetic_faq_retrieval_eval_bilingual.json`: 32 synthetic retrieval evaluation queries (26 supported-topic examples and 6 intentionally unsupported questions); evaluation labels are test targets, not clinic facts.
+- `doctor_availability.csv`: 18 synthetic appointment slots with generic demo doctor names and test-only patient IDs (`9100001`â€“`9100005`). These are not real people, bookings, or availability.
 - Dates and times are frozen sample values and will not track a real clinic's schedule.
 - All sample FAQ answers begin with an explicit `DEMO ONLY` warning.
 

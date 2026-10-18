@@ -28,11 +28,13 @@ ALLOWED_SPECIALTIES = {
 def test_demo_faq_is_loadable_and_every_answer_is_marked_fake():
     entries = load_faq(DEMO_FAQ)
 
-    assert len(entries) == 6
+    assert len(entries) == 26
     assert len({entry["id"] for entry in entries}) == len(entries)
-    assert all(answer["answer"].startswith("DEMO ONLY") for answer in entries)
+    assert all(answer["answer"].startswith(("DEMO ONLY", "\u0644\u0644\u062a\u062c\u0631\u0628\u0629 \u0641\u0642\u0637")) for answer in entries)
     assert all("NOT clinic-approved" in answer["source"]["title"] for answer in entries)
     assert all("not reviewed by a clinic" in answer["source"]["owner"] for answer in entries)
+    assert sum(entry["id"].endswith("-ar") for entry in entries) == 13
+    assert sum(entry["id"].endswith("-en") for entry in entries) == 13
 
 
 def test_demo_appointment_schedule_matches_tool_schema_and_has_valid_states():
@@ -75,3 +77,14 @@ def test_demo_booking_and_cancellation_mutate_only_a_temporary_copy(tmp_path, mo
     assert pd.isna(cancelled["patient_to_attend"])
 
     assert DEMO_APPOINTMENTS.read_bytes() == original_bytes
+
+
+
+def test_bilingual_synthetic_faq_evaluation_fixture_has_supported_and_unsupported_cases():
+    import json
+
+    fixture = REPO_ROOT / "tests" / "fixtures" / "synthetic_faq_retrieval_eval_bilingual.json"
+    cases = json.loads(fixture.read_text(encoding="utf-8"))
+    assert len(cases) == 32
+    assert sum(case["expected_source_id"] is not None for case in cases) == 26
+    assert sum(case["expected_source_id"] is None for case in cases) == 6

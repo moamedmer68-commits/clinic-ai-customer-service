@@ -385,3 +385,29 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Phase 0 remains in progress until usable OpenAI quota is available and a genuine Streamlit-to-API-to-agent chat request succeeds, or a reproducible remaining failure is captured.
 - Git review: local HEAD matched origin/ci/fix-github-actions at ddd8b5854cb7084f26cf9ed83b11fed8f018e5f9. No unresolved merge-conflict paths were reported. Existing local working-tree paths tests/test_tools.py, toolkit/toolkits.py, isolated_test*.py, scratch.py and scratch2.py are to be preserved and must not be reset/deleted/staged without re-inspection.
 - No provider change, code changes, commit, or push was performed for this checkpoint.
+
+
+### Phase 7 verification entry - 2026-10-18
+- Reviewed the Phase 7 checklist and its source-of-truth boundary before acting. Existing semantic RAG, strict FAQ preflight, persistent index, source metadata, content fingerprinting, safe no-answer behavior, and synthetic evaluation are implemented.
+- Focused verification: `.\\.venv\\Scripts\\python.exe -m pytest tests\\test_knowledge_base.py tests\\test_faq.py tests\\test_routing.py tests\\test_demo_data.py tests\\test_synthetic_fixture.py -q -p no:cacheprovider` - 25 passed in 4.88s.
+- Canonical source check: `.\\.venv\\Scripts\\python.exe -m knowledge_base --source data\\clinic_faq.json --index-dir data\\faq_index` exited 2 with `FAQ source is empty; add clinic-approved entries before building the index`. This is expected and safe: the canonical corpus is intentionally empty, and no clinic-approved facts were provided.
+- `deployment/demo_data/clinic_faq.json` contains six explicitly labelled fake/demo answers and is not an approved substitute. It remains isolated; no synthetic or historical content was copied into the canonical FAQ source, and no vector index was built from unapproved facts.
+- No application code or user working files were changed in this session. Existing local modifications and untracked scratch files were preserved. No commit or push performed.
+- Remaining Phase 7 blocker: clinic owner must provide/review FAQ facts and confirm owner, source, review date, and update process. Then ingest the approved corpus, add reviewed bilingual paraphrase/unsupported-query evaluation cases, and run retrieval relevance checks using a working embedding API quota. Real-clinic activation remains blocked until that evidence exists.
+
+
+### Phase 7 synthetic bilingual dataset update - 2026-10-18
+- Added/expanded `deployment/demo_data/clinic_faq.json` to 26 fabricated FAQ records: 13 English and 13 Arabic records across 13 topics. Every answer is explicitly marked as demo/fake and its source metadata says it is not clinic-approved.
+- Added `tests/fixtures/synthetic_faq_retrieval_eval_bilingual.json` with 32 synthetic evaluation queries: 26 expected supported-topic matches and 6 intentionally unsupported questions.
+- Updated `tests/test_demo_data.py` to verify record count, unique IDs, language coverage, fake-data warnings, and evaluation fixture shape. Updated `deployment/demo_data/README.md` to describe the expanded dataset.
+- Verification: `.\\.venv\\Scripts\\python.exe -m pytest tests\\test_demo_data.py tests\\test_knowledge_base.py tests\\test_faq.py tests\\test_routing.py tests\\test_synthetic_fixture.py -q -p no:cacheprovider` - 26 passed in 4.05s.
+- The canonical `data/clinic_faq.json` remains unchanged and empty. The synthetic FAQ is only under the demo-data directory and is not clinic-approved. No OpenAI embeddings or production index were generated because the recorded OpenAI quota issue may still block external embedding calls; no claim is made that semantic retrieval accuracy on the bilingual fixture has been measured yet.
+- Preserved pre-existing local changes in `tests/test_tools.py`, `toolkit/toolkits.py`, `.vscode/`, `isolated_test*.py`, and `scratch*.py`. No commit or push performed.
+
+
+### Phase 9 frontend polish — 2026-10-18
+- Reviewed the Phase 9 status and `docs/STREAMLIT_UI_ACCEPTANCE.md` before editing. Reworked `streamlit_ui.py` into a responsive CareDesk-style layout: custom visual hierarchy, teal/navy theme, hero panel, compact service/language/privacy cards, improved chat bubbles and mobile spacing, and clearer prototype/privacy/escalation notices.
+- Added an English/Arabic interface selector with translated headings, patient-ID instructions, error states, loading message, and demo safety footer. Kept patient ID masked and validation before API calls; user/assistant messages continue to render with raw HTML disabled. Kept the new-conversation button as the first button for existing UI tests and preserved the API request contract.
+- Added an AppTest for switching the UI to Arabic. Focused verification: `python -m pytest tests\\test_streamlit_ui.py tests\\test_ui_helpers.py -q -p no:cacheprovider` — 16 passed. Full suite before the new language-toggle test: 119 passed in 7.10s; rerun the full suite after the final test addition. `compileall` and `git diff --check` passed (only line-ending notices).
+- Not completed: manual browser screenshots at desktop/mobile widths, keyboard-only navigation, contrast/accessibility audit, and live API/model interaction. Automated AppTest does not prove these visual acceptance criteria. The existing OpenAI quota issue may block genuine model interaction.
+- No secrets changed, no commit/push performed, and pre-existing user modifications/untracked scratch files preserved.

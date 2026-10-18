@@ -72,3 +72,12 @@ def test_streamlit_ui_new_conversation_clears_transcript():
     assert at.session_state["transcript"] == []
     assert at.session_state["session_id"] != old_session
     assert not at.exception
+
+
+def test_streamlit_ui_can_switch_to_arabic(monkeypatch):
+    at = AppTest.from_file(str(APP_PATH)).run()
+    assert not at.exception
+    at.selectbox[0].select("العربية").run()
+    assert not at.exception
+    assert any("إزاي نقدر نساعدك النهارده؟" in item.value for item in at.markdown)
+    assert any("نسخة تجريبية" in item.value for item in at.markdown)
