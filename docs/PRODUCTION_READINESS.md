@@ -74,3 +74,12 @@ The repository is still a prototype. Remaining release blockers include:
 - [ ] Run docker compose config, build, readiness check, API auth checks, full tests, failure tests, and manual UI acceptance.
 - [ ] Rehearse backup/restore and release rollback with synthetic data.
 - [ ] Obtain clinic security/privacy approval before real patient use.
+
+
+## Patient account work (Phase 2 — in progress)
+
+- Added patient registration with pending_review state, manual staff approval endpoints, post-approval 8-digit Patient ID generation, PBKDF2 password hashing, opaque hashed bearer-session storage, 12-hour expiry, logout revocation, and /patients/me.
+- Compose now includes a PostgreSQL service and persistent volume for patient accounts. PATIENT_AUTH_REQUIRED=true is the default and Compose setting for /execute; the patient bearer session must match the requested patient ID. API_ACCESS_TOKEN remains service-to-service authentication only.
+- Staff review is currently protected by a shared STAFF_REVIEW_TOKEN rather than individual staff accounts/RBAC. This is a development scaffold, not a production staff identity system. Configure a strong unique secret locally and never expose the review routes publicly.
+- The current Streamlit UI does not yet implement patient registration/login or send the bearer session. The API intentionally rejects chat requests without patient authentication when enabled; Phase 3 must wire the new flow into the UI.
+- Remaining before production: database migrations and managed PostgreSQL configuration, staff identity/RBAC, rate limiting and login lockout, password reset/account recovery, email/phone verification of contact details as clinic policy requires, CSRF/browser-session considerations, privacy/retention/audit review, security/load testing, backups/restore, and clinic approval. No real patient data should be used for tests.

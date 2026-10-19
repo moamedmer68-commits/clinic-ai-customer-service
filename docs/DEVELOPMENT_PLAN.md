@@ -185,3 +185,54 @@ After Phase 0 passes, start Phase 1 by agreeing the registration fields and iden
 - Repository: https://github.com/moamedmer68-commits/clinic-ai-customer-service
 
 **Important:** This plan is an execution guide, not evidence that its phases are implemented or that the application is production ready. Change a phase to Completed only after its acceptance criteria have been tested and the evidence recorded.
+
+
+### 2026-10-18 - Phase 10 verification checkpoint
+- Reviewed this execution plan, `ROADMAP.md`, `docs/PRODUCTION_READINESS.md`, and `docs/CI_CD.md` before verification.
+- Commit `71e76568fd4f4eb68d248670a0827d5f9d316d95` has a successful hosted GitHub Actions run #18, including the CI container image build: https://github.com/moamedmer68-commits/clinic-ai-customer-service/actions/runs/39129199285
+- Local verification on the same working tree: full suite 120 passed in 7.74s; compileall passed; `pip check` found no broken requirements; `docker compose config --quiet` passed; `git diff --check` passed.
+- Docker Desktop's Linux engine pipe was unavailable during this checkpoint, so local Compose runtime smoke could not be repeated. Hosted CI image build is confirmed; local service startup is not claimed for this run.
+- Phase 10 is not complete: the production release checklist still requires clinic-approved FAQ/current schedule, end-user identity/authentication and authorization, operational privacy/security/retention decisions, transactional production persistence, a staffed escalation channel, backup/restore, security/load testing, manual UI accessibility/responsive acceptance, and an approved deployment/TLS/rollback plan. The known OpenAI quota blocker also prevents claiming a successful real UI-to-agent model smoke test.
+- User changes and scratch/isolated files were preserved. No secrets or patient data were staged; no commit/push performed.
+
+
+### 2026-10-18 — Repository organization checkpoint
+- Moved eight local exploratory scripts (`isolated_test.py` through `isolated_test6.py`, `scratch.py`, and `scratch2.py`) from the repository root into `dev/experiments/`; added a README clarifying these are exploratory scripts, not maintained automated tests. Their contents were preserved.
+- Kept runtime/import entrypoints (`agent.py`, `main.py`, `streamlit_ui.py`, `knowledge_base.py`, `ui_helpers.py`) at the root because the current Dockerfile, tests, and documented commands depend on those paths. A broader `src/` migration is deferred until it can be handled as a dedicated refactor.
+- Verification after the move: full pytest suite — 120 passed in 7.45s; compile check passed; `docker compose config --quiet` passed; `git diff --check` passed (only existing LF/CRLF warnings).
+- Existing modifications in `ROADMAP.md`, this plan, `tests/test_tools.py`, and `toolkit/toolkits.py`, plus `.vscode/` and the phase audit, were preserved. No secrets were read; no commit or push performed.
+- Next execution dependency remains Phase 0: restore usable OpenAI API quota and complete a real Streamlit-to-API-to-agent chat smoke test before implementing registration/authentication phases.
+
+
+### 2026-10-18 — Phase 0 runtime recheck
+- Re-read the Phase 0 acceptance criteria before acting. Rebuilt and started the local Compose stack with `docker compose up -d --build`; both API and UI images built successfully.
+- Runtime evidence: API container reached Docker `healthy`; `GET /health/live` returned HTTP 200; `GET /health/ready` returned HTTP 200; Streamlit root `GET /` returned HTTP 200 after startup.
+- This confirms the containers and web endpoints start, but it does **not** prove the UI-to-agent OpenAI call succeeds. The previously recorded direct OpenAI smoke test failed with HTTP 429 `insufficient_quota` / `credit_balance_exhausted`. No real model response is claimed in this recheck.
+- Phase 0 remains **blocked on usable OpenAI API quota**. Once the account/project has quota, rerun a genuine chat request through the UI and record the response or sanitized error/request ID. Keep the OpenAI provider unchanged.
+- No application code, `.env`, or secrets were read or changed. Existing local modifications and untracked files were preserved. No commit, push, or merge performed.
+
+
+### 2026-10-18 — Phase 0 genuine API-to-agent smoke test
+- Rebuilt/started Compose and verified API readiness and Streamlit root as recorded above.
+- Sent a synthetic, non-patient smoke request from inside the UI container to the API using the configured service credential without displaying or reading secret values: `POST /execute`, message `Hello, I need help with an appointment`, synthetic ID `9123456`, session `phase0-smoke-20261018`.
+- Result: HTTP 500, request ID `d96182df-a964-458b-94cb-a05ce2445b12`, safe API error `agent_execution_failed`. Sanitized API logs for that request show three OpenAI Chat Completions HTTP 429 responses and the explicit cause `insufficient_quota` / `credit_balance_exhausted` (“no credits remaining”). This is a reproduced end-to-end blocker, not a health-check failure.
+- Phase 0 remains blocked until OpenAI API billing/quota is restored. No provider/model change or fallback was introduced. The API and UI containers remain running.
+- No app code, `.env`, or secret values were read/changed; the test used only synthetic input. Existing local modifications preserved; no commit/push/merge.
+
+
+### 2026-10-18 — Phase 2 patient-account implementation checkpoint
+- Implemented patient_accounts.py using SQLAlchemy models for patient accounts and opaque sessions. Passwords are salted and PBKDF2-HMAC-SHA256 hashed; raw session tokens are returned only at login and only their SHA-256 hashes are stored. Sessions expire after 12 hours and logout revokes the token.
+- Added API flows: POST /patients/register (creates pending_review account; no Patient ID), staff-only pending queue and approval routes, POST /patients/login, GET /patients/me, and POST /patients/logout. An 8-digit Patient ID is generated only after approval; duplicate email registration is rejected.
+- Added authenticated-patient enforcement to POST /execute when PATIENT_AUTH_REQUIRED=true (default and enabled in Compose). Requests without a valid patient session receive 401; a supplied patient ID that differs from the authenticated account receives 403. API_ACCESS_TOKEN remains a separate service credential.
+- Added PostgreSQL service and persistent named volume to Compose, PATIENT_DATABASE_URL, pinned SQLAlchemy/PostgreSQL driver dependencies, .env.example settings, and ignored local account DB path. Existing application storage for appointments and conversations is not migrated by this phase.
+- Added 5 focused tests for pending approval, Patient ID issuance timing, duplicate registration, staff authorization, login/me/logout/revocation, invalid credentials, and rejecting unauthenticated or mismatched patient access.
+- Important limitation: staff approval currently uses a separately configured STAFF_REVIEW_TOKEN shared secret, not individual staff accounts/roles. Do not expose the review endpoints publicly; replacing this with authenticated staff identity/RBAC, rate limiting, lockout, database migrations, privacy review, and operational controls remains required before production.
+- Phase 2 remains IN PROGRESS, not production-ready. The existing Streamlit UI has not yet been updated to provide registration/login and send the patient bearer token; this is Phase 3 work, so chat through the current UI will be denied by the Compose API until that integration is implemented. OpenAI provider/model unchanged. No commit or push.
+
+
+### Phase 2 verification result — 2026-10-18
+- Focused patient-account suite: 5 passed in 7.51s.
+- Full suite with pinned SQLAlchemy 2.0.38 and psycopg 3.2.5 installed: 125 passed in 19.15s.
+- compileall passed; pip check reported no broken requirements; docker compose config --quiet passed; git diff --check passed (only existing LF/CRLF warnings).
+- Container image rebuild was attempted, but the build remained at Docker Hub metadata retrieval for python:3.12-slim without further output and was stopped; container build/runtime against PostgreSQL is therefore not verified in this checkpoint.
+- Phase 2 remains in progress because the UI is not integrated with patient login, staff review still uses a shared token, and production security/operational criteria remain open.

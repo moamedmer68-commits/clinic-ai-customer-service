@@ -411,3 +411,40 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Added an AppTest for switching the UI to Arabic. Focused verification: `python -m pytest tests\\test_streamlit_ui.py tests\\test_ui_helpers.py -q -p no:cacheprovider` — 16 passed. Full suite before the new language-toggle test: 119 passed in 7.10s; rerun the full suite after the final test addition. `compileall` and `git diff --check` passed (only line-ending notices).
 - Not completed: manual browser screenshots at desktop/mobile widths, keyboard-only navigation, contrast/accessibility audit, and live API/model interaction. Automated AppTest does not prove these visual acceptance criteria. The existing OpenAI quota issue may block genuine model interaction.
 - No secrets changed, no commit/push performed, and pre-existing user modifications/untracked scratch files preserved.
+
+
+### Phase 10 verification checkpoint - 2026-10-18
+- Reviewed `docs/DEVELOPMENT_PLAN.md`, `docs/PRODUCTION_READINESS.md`, and `docs/CI_CD.md` before verification. Scope remains production-readiness evidence and release gates; this checkpoint does not claim real-clinic readiness.
+- Current branch commit `71e76568fd4f4eb68d248670a0827d5f9d316d95` passed GitHub Actions run #18: dependency install/checks, compile, full tests, and container image build. Run: https://github.com/moamedmer68-commits/clinic-ai-customer-service/actions/runs/39129199285
+- Local full test suite: `.\\.venv\\Scripts\\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp-phase10-final` - 120 passed in 7.74s.
+- Local compile check passed for app, UI, toolkit, data models, utilities, knowledge base, and support modules. `pip check` reported `No broken requirements found`; `docker compose config --quiet` passed; `git diff --check` passed.
+- A fresh local Compose/container runtime check could not be repeated because Docker Desktop's Linux engine pipe was unavailable. The hosted CI image build passed for this commit; no claim is made that local containers were started in this checkpoint.
+- Current GitHub Actions run confirms CI/build for the pushed commit only; it does not complete manual browser/mobile/keyboard accessibility acceptance, a genuine model call (OpenAI quota issue remains documented), or production operational approvals.
+- Phase 10 remains **in progress**. Release blockers still include clinic-approved FAQ and current schedule, end-user authentication/authorization, rate limiting/TLS/managed secrets, retention/deletion/audit/encryption policies, production transactional persistence, staffed human escalation, backup/restore rehearsal, security/load tests, deployment/rollback and manual UI acceptance. These require clinic/environment decisions and evidence, not fabricated defaults.
+- Existing user changes in `tests/test_tools.py`, `toolkit/toolkits.py`, `.vscode/`, `isolated_test*.py`, and `scratch*.py` were preserved. No secrets or patient data were staged or changed; no commit/push performed for this documentation checkpoint.
+
+
+### Repository organization checkpoint — 2026-10-18
+- Moved the eight local exploratory scripts from the repository root to `dev/experiments/` without changing their contents and added a folder README. They remain local/untracked and were not staged.
+- Kept production entrypoints and modules in the root because Dockerfile COPY commands, tests, and current commands import them by those paths. A wider package-layout refactor is intentionally deferred.
+- Verification after organization: full suite 120 passed in 7.45s; compile check, `docker compose config --quiet`, and `git diff --check` passed. Existing user changes were preserved; no commit or push performed.
+
+
+### Phase 0 runtime recheck — 2026-10-18
+- Rebuilt and started the local Compose stack using `docker compose up -d --build`; API and UI images built successfully.
+- Verified API `/health/live` = HTTP 200, API `/health/ready` = HTTP 200, and Streamlit `/` = HTTP 200 after startup; API container reached Docker `healthy`.
+- This is runtime/endpoint verification only, not a successful end-to-end LLM chat. The known direct OpenAI error remains HTTP 429 `insufficient_quota` / `credit_balance_exhausted`; real UI-to-agent smoke acceptance is still blocked until usable OpenAI API quota is restored.
+- No provider change, application-code change, secret read/change, commit, push, or merge performed. Existing working-tree changes preserved.
+
+
+### Phase 0 end-to-end blocker reproduced — 2026-10-18
+- Sent a synthetic request from the UI container to `POST /execute` with the configured service credential (secret value not printed): HTTP 500, request ID `d96182df-a964-458b-94cb-a05ce2445b12`, safe error `agent_execution_failed`.
+- Sanitized API logs correlate that request with repeated OpenAI Chat Completions HTTP 429 and `insufficient_quota` / `credit_balance_exhausted` (“no credits remaining”). Thus UI/API transport is working; the genuine agent response is blocked by OpenAI API billing/quota.
+- Phase 0 remains blocked pending restored quota and a repeated successful UI-to-agent smoke test. Compose containers remain running. Synthetic test only; no real patient data, secrets displayed, app code changed, commit or push.
+
+
+### Patient account security work — 2026-10-18
+- Added SQLAlchemy patient account/session models, manual-review registration, staff approval, post-approval unique 8-digit Patient ID generation, password hashing, expiring opaque bearer sessions, login/me/logout endpoints, and patient-session enforcement for POST /execute when PATIENT_AUTH_REQUIRED=true.
+- Added PostgreSQL Compose service/volume and database configuration/dependencies. Added focused account/auth tests.
+- Staff review currently relies on a separate shared STAFF_REVIEW_TOKEN; individual staff identities/RBAC and production safeguards remain open. Existing Streamlit UI has not yet been integrated with login/registration, so Phase 3 is required before end-user chat works with patient auth enabled.
+- This is an implementation checkpoint only, not production readiness. No commit/push; existing user changes preserved.

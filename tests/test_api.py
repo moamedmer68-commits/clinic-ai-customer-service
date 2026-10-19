@@ -176,6 +176,7 @@ def test_local_unauthenticated_mode_requires_explicit_opt_in(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("API_ACCESS_TOKEN", raising=False)
     monkeypatch.setenv("ALLOW_UNAUTHENTICATED_LOCAL_DEV", "true")
+    monkeypatch.setenv("PATIENT_AUTH_REQUIRED", "false")
     graph = SuccessfulGraph()
     with TestClient(create_app()) as client:
         client.app.state.graph = graph
