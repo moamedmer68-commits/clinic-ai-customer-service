@@ -155,3 +155,22 @@ def revoke_token(db: Session, raw_token: str) -> bool:
     session_row.revoked_at = _utcnow()
     db.commit()
     return True
+
+
+def deactivate_account(db: Session, account_id: int) -> PatientAccount | None:
+    """Deactivate an account and revoke every session in one database transaction."""
+    account = db.get(PatientAccount, account_id)
+    if account is None:
+        return None
+    now = _utcnow()
+    account.status = "deactivated"
+    sessions = db.scalars(
+        select(PatientSession).where(
+            PatientSession.account_id == account_id,
+            PatientSession.revoked_at.is_(None),
+        )
+    ).all()
+    for session_row in sessions:
+        session_row.revoked_at = now
+    db.commit()
+    return account

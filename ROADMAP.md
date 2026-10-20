@@ -478,3 +478,8 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Added a strict SQLite handoff status transition graph and transactional status updates; terminal resolved/cancelled cases cannot be reopened, unknown case IDs return false, and invalid transitions raise a validation error.
 - Handoff tests: 10 passed. Full suite: 132 passed in 12.30s.
 - External staffed notification, authenticated staff case-management, and approved retention/deletion policy remain open; local queue is not represented as a live human handoff.
+
+### Phase 7 initial security lifecycle - 2026-10-20
+- Added a staff-authorized account deactivation endpoint. It marks the patient account deactivated and revokes all active sessions transactionally; unauthenticated staff requests are denied and missing accounts return 404.
+- Account tests: 10 passed; full suite: 134 passed in 15.48s.
+- Phase 7 remains in progress: production migrations, staff RBAC, rate limiting, account recovery, audit/privacy lifecycle, HTTPS/secret rotation, backup/restore and load/security tests remain open. Docker runtime check unavailable.

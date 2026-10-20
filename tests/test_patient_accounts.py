@@ -201,3 +201,44 @@ def test_conversation_checkpoint_keys_are_scoped_by_patient_even_for_same_sessio
     assert len(first) == 64
     assert len(second) == 64
 
+
+
+def test_staff_deactivation_revokes_all_patient_sessions(monkeypatch, tmp_path):
+    with _client(monkeypatch, tmp_path) as client:
+        assert _register(client).status_code == 202
+        pending = client.get("/staff/pending-registrations", headers={
+            "X-Staff-Review-Key": "test-staff-review-token",
+        }).json()["items"][0]
+        account_id = pending["account_id"]
+        assert _approve(client, account_id).status_code == 200
+        login = client.post("/patients/login", json={
+            "email": "patient@example.test",
+            "password": "A-long-test-password-123",
+        })
+        assert login.status_code == 200
+        token = login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        assert client.get("/patients/me", headers=headers).status_code == 200
+
+        denied = client.post(f"/staff/accounts/{account_id}/deactivate")
+        assert denied.status_code == 401
+        deactivated = client.post(
+            f"/staff/accounts/{account_id}/deactivate",
+            headers={"X-Staff-Review-Key": "test-staff-review-token"},
+        )
+        assert deactivated.status_code == 200
+        assert deactivated.json()["patient"]["status"] == "deactivated"
+        assert client.get("/patients/me", headers=headers).status_code == 401
+        assert client.post("/patients/login", json={
+            "email": "patient@example.test",
+            "password": "A-long-test-password-123",
+        }).status_code == 403
+
+
+def test_deactivate_missing_account_returns_not_found(monkeypatch, tmp_path):
+    with _client(monkeypatch, tmp_path) as client:
+        response = client.post(
+            "/staff/accounts/999999/deactivate",
+            headers={"X-Staff-Review-Key": "test-staff-review-token"},
+        )
+        assert response.status_code == 404

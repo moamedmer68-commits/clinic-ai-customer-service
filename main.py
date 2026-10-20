@@ -19,7 +19,7 @@ from sqlalchemy import text
 
 from patient_accounts import (
     account_for_token, approve_account, authenticate_and_create_session,
-    create_pending_account, initialize_database, make_engine, revoke_token, session_factory,
+    create_pending_account, deactivate_account, initialize_database, make_engine, revoke_token, session_factory,
 )
 
 load_dotenv()
@@ -354,6 +354,18 @@ def create_app() -> FastAPI:
         if account is None:
             return _error_response(request, 404, "registration_not_found", "Registration was not found.")
         return {"status": "approved", "patient": _safe_account(account), "request_id": request.state.request_id}
+
+    @api.post("/staff/accounts/{account_id}/deactivate")
+    def deactivate_patient_account(account_id: int, request: Request):
+        denied = _authorize_staff(request)
+        if denied is not None:
+            return denied
+        with _db_session(request) as db:
+            account = deactivate_account(db, account_id)
+        if account is None:
+            return _error_response(request, 404, "account_not_found", "Patient account was not found.")
+        logger.info("Patient account deactivated by staff", extra={"request_id": request.state.request_id})
+        return {"status": "deactivated", "patient": _safe_account(account), "request_id": request.state.request_id}
 
     @api.post("/execute")
     def execute_agent(user_input: UserQuery, request: Request):

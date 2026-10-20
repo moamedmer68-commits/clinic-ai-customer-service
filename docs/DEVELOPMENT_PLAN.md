@@ -282,3 +282,11 @@ After Phase 0 passes, start Phase 1 by agreeing the registration fields and iden
 - Added regression tests for illegal pending->resolved transition, reopening a resolved case, and unknown case updates. Handoff-focused suite: 10 passed. Full suite: 132 passed in 12.30s.
 - Existing queue still only stores local cases; there is no staffed notification channel or authenticated staff dashboard/API for case management. No claim of real human notification is made. Retention/deletion rules need clinic/privacy owner decisions and are not invented here.
 - Temporary local demo UI/API processes remain stopped; temporary onboarding bypass was removed from source. Docker Desktop engine unavailable. No secrets or real patient records accessed.
+
+### 2026-10-20 - Phase 7 initial account security lifecycle
+- Started `feat/phase-7-storage-security-ops` after pushing the current Phase 6 branch.
+- Added staff-authenticated `POST /staff/accounts/{account_id}/deactivate`. Deactivation changes account status and revokes every active patient session in one SQLAlchemy transaction; unknown IDs return 404 and missing/invalid staff credentials are rejected.
+- Added tests proving active sessions stop working after deactivation, deactivated accounts cannot log in, and staff authorization is required.
+- Patient account tests: 10 passed. Full suite: 134 passed in 15.48s. Compile checks and dependency checks pass.
+- Phase 7 remains in progress: production database migrations, role-based staff identities, login rate limiting, password recovery, audit trail, retention/deletion workflows, HTTPS/secret rotation, backups/restore, and load/security validation are not complete. The shared staff review token remains a prototype control and is not production RBAC.
+- No `.env` secrets or real patient data accessed. No Docker runtime verification due unavailable Docker Desktop engine.
