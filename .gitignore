@@ -22,3 +22,6 @@ __pycache__/
 # Local patient account database (never commit patient data)
 data/patient_accounts.sqlite3
 data/patient_accounts.sqlite3-*
+
+# Local pytest artifacts; keep test scratch output inside the project but out of Git
+dev/test-artifacts/pytest/

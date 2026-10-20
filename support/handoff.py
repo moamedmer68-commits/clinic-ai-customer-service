@@ -12,6 +12,12 @@ from uuid import uuid4
 
 HandoffStatus = Literal["pending", "acknowledged", "resolved", "cancelled"]
 _VALID_HANDOFF_STATUSES = {"pending", "acknowledged", "resolved", "cancelled"}
+_ALLOWED_HANDOFF_TRANSITIONS = {
+    "pending": {"acknowledged", "cancelled"},
+    "acknowledged": {"resolved", "cancelled"},
+    "resolved": set(),
+    "cancelled": set(),
+}
 
 _CASE_ID_RE = re.compile(r"[^A-Z0-9_-]+")
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.\w+\b")
@@ -168,12 +174,26 @@ def update_handoff_status(
     now = _utc_now()
     with sqlite3.connect(str(path), timeout=10) as connection:
         _ensure_schema(connection)
-        cursor = connection.execute(
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT status FROM handoff_cases WHERE case_id = ?", (case_id,)
+        ).fetchone()
+        if row is None:
+            connection.rollback()
+            return False
+        current = str(row[0])
+        if status == current:
+            connection.commit()
+            return True
+        if status not in _ALLOWED_HANDOFF_TRANSITIONS.get(current, set()):
+            connection.rollback()
+            raise ValueError(f"Invalid handoff status transition: {current} -> {status}")
+        connection.execute(
             "UPDATE handoff_cases SET status = ?, updated_at = ? WHERE case_id = ?",
             (status, now, case_id),
         )
         connection.commit()
-    return cursor.rowcount == 1
+    return True
 
 
 def list_pending_handoffs(*, db_path: str | Path | None = None, limit: int = 50) -> list[dict[str, str]]:

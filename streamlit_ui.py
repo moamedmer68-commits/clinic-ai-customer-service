@@ -18,7 +18,7 @@ except ValueError:
     API_TIMEOUT_SECONDS = 45.0
 API_ACCESS_TOKEN = os.getenv("API_ACCESS_TOKEN", "").strip()
 
-st.set_page_config(page_title="CareDesk | Clinic Assistant", page_icon="✚", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="CareDesk | Clinic Assistant", page_icon="âœš", layout="wide", initial_sidebar_state="expanded")
 
 # Keep all user-provided content rendered through Streamlit's safe Markdown path.
 st.markdown(
@@ -60,7 +60,7 @@ if "transcript" not in st.session_state:
 if "language" not in st.session_state:
     st.session_state.language = "English"
 
-AR = st.session_state.language == "العربية"
+AR = st.session_state.language == "Ø§Ù„Ø¹Ø±Ø¨ÙŠØ©"
 TXT = {
     "brand": "مساعد العيادة الذكي" if AR else "CareDesk Clinic Assistant",
     "eyebrow": "رعاية أوضح. حجز أسهل." if AR else "CLINIC SUPPORT, MADE SIMPLE",
@@ -89,24 +89,188 @@ TXT = {
     "footer": "عرض تجريبي ببيانات غير حقيقية — لا تستخدمه لحجز موعد فعلي أو للطوارئ." if AR else "Demo with synthetic data — not for real bookings or emergencies.",
 }
 
+
+# Phase 3: onboarding is the only entry point until the patient has an API-issued session.
+# Patient IDs are never typed into the UI; they come only from the approved account response.
+if "auth_token" not in st.session_state:
+    st.session_state.auth_token = ""
+if "patient_profile" not in st.session_state:
+    st.session_state.patient_profile = None
+if "auth_notice" not in st.session_state:
+    st.session_state.auth_notice = ""
+
+
+
+API_BASE_URL = API_URL.rsplit("/", 1)[0]
+AUTH_TEXT = {
+    "English": {
+        "heading": "Welcome to CareDesk",
+        "intro": "Register for a new account or sign in to your approved patient account.",
+        "register": "Create account",
+        "login": "Sign in",
+        "name": "Full name",
+        "email": "Email address",
+        "phone": "Phone (optional)",
+        "password": "Password (at least 12 characters)",
+        "confirm": "Create registration",
+        "submit_login": "Sign in",
+        "pending": "Registration received. Your account must be reviewed by clinic staff before a Patient ID is issued. You can sign in after approval.",
+        "register_ok": "Registration submitted for review.",
+        "login_error": "Sign-in failed. Check your details or wait until clinic staff approve your registration.",
+        "register_error": "Registration could not be submitted. Check the fields and try again.",
+        "network_error": "The clinic service could not be reached. Please try again later.",
+        "logout": "Sign out",
+        "account": "Signed-in patient",
+        "id": "Patient ID",
+        "name_required": "Enter your full name.",
+        "password_short": "Password must contain at least 12 characters.",
+        "language_note": "Language can be changed from the sidebar.",
+        "generic_error": "The request could not be completed. Please try again.",
+    },
+    "Arabic": {
+        "heading": "?????? ?? ?? CareDesk",
+        "intro": "???? ?????? ?????? ?? ???? ?????? ??? ???? ?????? ???????.",
+        "register": "????? ????",
+        "login": "????? ??????",
+        "name": "????? ??????",
+        "email": "?????? ??????????",
+        "phone": "??? ?????? (???????)",
+        "password": "???? ?????? (12 ????? ??? ?????)",
+        "confirm": "????? ???????",
+        "submit_login": "????? ??????",
+        "pending": "?? ?????? ??? ???????. ??? ?? ????? ???? ??????? ????? ??? ????? ??? ??????. ????? ????? ?????? ??? ????????.",
+        "register_ok": "?? ????? ??????? ????????.",
+        "login_error": "????? ????? ??????. ???? ???????? ?? ????? ?????? ???? ???????.",
+        "register_error": "????? ????? ???????. ???? ???????? ????? ??? ????.",
+        "network_error": "????? ??????? ????? ???????. ???? ??? ???? ??????.",
+        "logout": "????? ??????",
+        "account": "???? ?????? ???????",
+        "id": "??? ??????",
+        "name_required": "???? ????? ??????.",
+        "password_short": "??? ?? ????? ???? ?????? ?? 12 ????? ??? ?????.",
+        "language_note": "???? ????? ????? ?? ??????? ????????.",
+        "generic_error": "????? ????? ?????. ???? ??? ????.",
+    },
+}
+AUTH = AUTH_TEXT["Arabic" if AR else "English"]
+
+# Keep language selection available before registration and sign-in.
 with st.sidebar:
-    st.markdown(f"### ✚ {TXT['brand']}")
-    st.caption("LANGUAGE / اللغة")
-    selected_language = st.selectbox("Language / اللغة", ["English", "العربية"], index=0 if st.session_state.language == "English" else 1, label_visibility="collapsed")
+    selected_language = st.selectbox(
+        "Language / ?????",
+        ["English", "???????"],
+        index=0 if st.session_state.language == "English" else 1,
+        label_visibility="collapsed",
+        key="onboarding_language",
+    )
     if selected_language != st.session_state.language:
         st.session_state.language = selected_language
         st.rerun()
+
+def _auth_request(path, payload):
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/{path.lstrip('/')}",
+            json=payload,
+            headers={"Accept": "application/json"},
+            timeout=min(API_TIMEOUT_SECONDS, 20.0),
+        )
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+        return response.status_code, body
+    except requests.RequestException:
+        return 0, {}
+
+if st.session_state.auth_notice:
+    st.info(st.session_state.auth_notice)
+    st.session_state.auth_notice = ""
+
+if not st.session_state.auth_token or not isinstance(st.session_state.patient_profile, dict):
+    st.markdown(f"## {AUTH['heading']}")
+    st.write(AUTH["intro"])
+    register_tab, login_tab = st.tabs([AUTH["register"], AUTH["login"]])
+
+    with register_tab:
+        with st.form("patient_registration_form", clear_on_submit=False):
+            registration_name = st.text_input(AUTH["name"], max_chars=160)
+            registration_email = st.text_input(AUTH["email"], max_chars=254)
+            registration_phone = st.text_input(AUTH["phone"], max_chars=32)
+            registration_password = st.text_input(AUTH["password"], type="password", max_chars=128)
+            registration_submitted = st.form_submit_button(AUTH["confirm"], type="primary", use_container_width=True)
+        if registration_submitted:
+            if len(registration_name.strip()) < 2:
+                st.error(AUTH["name_required"])
+            elif len(registration_password) < 12:
+                st.error(AUTH["password_short"])
+            else:
+                status_code, body = _auth_request("patients/register", {
+                    "full_name": registration_name.strip(),
+                    "email": registration_email.strip(),
+                    "phone": registration_phone.strip() or None,
+                    "password": registration_password,
+                })
+                if status_code == 202:
+                    st.success(AUTH["pending"])
+                elif status_code == 409:
+                    st.error(AUTH["register_error"])
+                elif status_code == 0:
+                    st.error(AUTH["network_error"])
+                else:
+                    st.error(AUTH["register_error"])
+
+    with login_tab:
+        with st.form("patient_login_form", clear_on_submit=False):
+            login_email = st.text_input(AUTH["email"], key="login_email", max_chars=254)
+            login_password = st.text_input(AUTH["password"], key="login_password", type="password", max_chars=128)
+            login_submitted = st.form_submit_button(AUTH["submit_login"], type="primary", use_container_width=True)
+        if login_submitted:
+            status_code, body = _auth_request("patients/login", {
+                "email": login_email.strip(),
+                "password": login_password,
+            })
+            patient = body.get("patient") if isinstance(body, dict) else None
+            token = body.get("access_token") if isinstance(body, dict) else None
+            if status_code == 200 and isinstance(patient, dict) and isinstance(token, str) and token:
+                st.session_state.auth_token = token
+                st.session_state.patient_profile = patient
+                st.session_state.session_id = str(uuid.uuid4())
+                st.session_state.transcript = []
+                st.rerun()
+            elif status_code == 0:
+                st.error(AUTH["network_error"])
+            else:
+                st.error(AUTH["login_error"])
+    st.caption(AUTH["language_note"])
+    st.stop()
+
+with st.sidebar:
+    st.markdown(f"### âœš {TXT['brand']}")
     st.divider()
-    st.subheader("المحادثة" if AR else "Your conversation")
-    st.caption(f"{TXT['session']}: {st.session_state.session_id[:8]}…")
+    st.subheader("Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø©" if AR else "Your conversation")
+    st.caption(f"{TXT['session']}: {st.session_state.session_id[:8]}â€¦")
     if st.button(TXT["new"], use_container_width=True):
         st.session_state.session_id = str(uuid.uuid4())
         st.session_state.transcript = []
         st.rerun()
-    patient_id_text = st.text_input(
-        TXT["patient"], key="patient_id", type="password", max_chars=8,
-        help=TXT["patient_help"],
-    )
+    profile = st.session_state.patient_profile
+    st.caption(f"{AUTH['account']}: {profile.get('full_name', '')}")
+    st.caption(f"{AUTH['id']}: {profile.get('patient_id', '')}")
+    if st.button(AUTH["logout"], use_container_width=True):
+        try:
+            requests.post(
+                f"{API_BASE_URL}/patients/logout",
+                headers={"Authorization": f"Bearer {st.session_state.auth_token}"},
+                timeout=min(API_TIMEOUT_SECONDS, 10.0),
+            )
+        except requests.RequestException:
+            pass
+        st.session_state.auth_token = ""
+        st.session_state.patient_profile = None
+        st.session_state.transcript = []
+        st.session_state.session_id = str(uuid.uuid4())
+        st.rerun()
     st.caption(TXT["privacy"])
     st.divider()
     st.caption(TXT["handoff"])
@@ -118,18 +282,18 @@ st.markdown(
     <div class="care-eyebrow">{TXT['eyebrow']}</div>
     <div class="care-title">{TXT['title']}</div>
     <div class="care-subtitle">{TXT['subtitle']}</div>
-    <span class="care-pill">✦ {TXT['prototype']}</span>
+    <span class="care-pill">âœ¦ {TXT['prototype']}</span>
     </section>""",
     unsafe_allow_html=True,
 )
 
 metric1, metric2, metric3 = st.columns(3)
 with metric1:
-    st.markdown(f'<div class="care-info"><div class="care-info-label">{"الحالة" if AR else "SERVICE"}</div><div class="care-info-value">{"مساعد معلومات ومواعيد" if AR else "Information & appointments"}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="care-info"><div class="care-info-label">{"Ø§Ù„Ø­Ø§Ù„Ø©" if AR else "SERVICE"}</div><div class="care-info-value">{"Ù…Ø³Ø§Ø¹Ø¯ Ù…Ø¹Ù„ÙˆÙ…Ø§Øª ÙˆÙ…ÙˆØ§Ø¹ÙŠØ¯" if AR else "Information & appointments"}</div></div>', unsafe_allow_html=True)
 with metric2:
-    st.markdown(f'<div class="care-info"><div class="care-info-label">{"اللغة" if AR else "LANGUAGE"}</div><div class="care-info-value">{"العربية والإنجليزية" if AR else "Arabic & English UI"}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="care-info"><div class="care-info-label">{"Ø§Ù„Ù„ØºØ©" if AR else "LANGUAGE"}</div><div class="care-info-value">{"Ø§Ù„Ø¹Ø±Ø¨ÙŠØ© ÙˆØ§Ù„Ø¥Ù†Ø¬Ù„ÙŠØ²ÙŠØ©" if AR else "Arabic & English UI"}</div></div>', unsafe_allow_html=True)
 with metric3:
-    st.markdown(f'<div class="care-info"><div class="care-info-label">{"الخصوصية" if AR else "PRIVACY"}</div><div class="care-info-value">{"سياق منفصل للجلسة" if AR else "Session-scoped context"}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="care-info"><div class="care-info-label">{"Ø§Ù„Ø®ØµÙˆØµÙŠØ©" if AR else "PRIVACY"}</div><div class="care-info-value">{"Ø³ÙŠØ§Ù‚ Ù…Ù†ÙØµÙ„ Ù„Ù„Ø¬Ù„Ø³Ø©" if AR else "Session-scoped context"}</div></div>', unsafe_allow_html=True)
 
 if not st.session_state.transcript:
     st.info(TXT["welcome"])
@@ -143,9 +307,13 @@ for entry in st.session_state.transcript:
 
 query = st.chat_input(TXT["placeholder"])
 if query:
-    patient_id = normalize_patient_id(patient_id_text)
-    if patient_id is None:
-        st.error(TXT["invalid_id"])
+    profile = st.session_state.patient_profile
+    patient_id = normalize_patient_id(profile.get("patient_id") if isinstance(profile, dict) else None)
+    if patient_id is None or not st.session_state.auth_token:
+        st.error(AUTH["login_error"])
+        st.session_state.auth_token = ""
+        st.session_state.patient_profile = None
+        st.stop()
     else:
         st.session_state.transcript.append({"role": "user", "content": query})
         with st.chat_message("user"):
@@ -154,6 +322,7 @@ if query:
         headers = {"Accept": "application/json"}
         if API_ACCESS_TOKEN:
             headers["X-API-Key"] = API_ACCESS_TOKEN
+        headers["Authorization"] = f"Bearer {st.session_state.auth_token}"
         response_payload = None
         error_message = None
         answer = ""
@@ -175,10 +344,13 @@ if query:
                         error_obj = response_payload.get("error", {}) if isinstance(response_payload, dict) else {}
                         error_message = error_obj.get("message") if isinstance(error_obj, dict) else None
                         if response.status_code in {401, 403}:
-                            error_message = TXT["api_rejected"]
+                            st.session_state.auth_token = ""
+                            st.session_state.patient_profile = None
+                            st.session_state.auth_notice = AUTH["login_error"]
+                            st.rerun()
                         elif response.status_code == 503:
                             error_message = TXT["not_ready"]
-                        error_message = error_message or (f"HTTP {response.status_code}" if not AR else f"خطأ HTTP {response.status_code}")
+                        error_message = error_message or (f"HTTP {response.status_code}" if not AR else f"Ø®Ø·Ø£ HTTP {response.status_code}")
                     elif not isinstance(response_payload, dict):
                         error_message = TXT["invalid_response"]
                     else:
@@ -201,4 +373,4 @@ if query:
                 answer = error_message
         st.session_state.transcript.append({"role": "assistant", "content": answer})
 
-st.markdown(f'<div class="care-footnote" dir="{"rtl" if AR else "ltr"}">ⓘ {TXT["footer"]}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="care-footnote" dir="{"rtl" if AR else "ltr"}">â“˜ {TXT["footer"]}</div>', unsafe_allow_html=True)

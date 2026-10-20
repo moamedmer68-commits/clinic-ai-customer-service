@@ -448,3 +448,33 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Added PostgreSQL Compose service/volume and database configuration/dependencies. Added focused account/auth tests.
 - Staff review currently relies on a separate shared STAFF_REVIEW_TOKEN; individual staff identities/RBAC and production safeguards remain open. Existing Streamlit UI has not yet been integrated with login/registration, so Phase 3 is required before end-user chat works with patient auth enabled.
 - This is an implementation checkpoint only, not production readiness. No commit/push; existing user changes preserved.
+
+
+### Phase 3 execution entry - patient onboarding - 2026-10-20
+- Created the branch feat/phase-3-patient-onboarding before making Phase 3 UI changes. The previous local Phase 2 verification edits were preserved.
+- Updated streamlit_ui.py to provide English/Arabic registration and sign-in forms against the existing patient API routes. New registrations remain pending staff identity review; the UI does not fabricate or issue a Patient ID.
+- Chat is now gated on an approved login: the UI reads the Patient ID from the API-issued patient profile, sends the bearer token with /execute, and supports logout through /patients/logout. Removed manual Patient ID entry from the normal user journey.
+- Added AppTest coverage for onboarding, registration request fields, login token/profile handling, authenticated chat payload, and language selection.
+- Focused tests: 26 passed (tests/test_streamlit_ui.py tests/test_ui_helpers.py tests/test_patient_accounts.py). Final full suite after auth-expiry handling: 130 passed in 11.25s. Compileall, pip check, Compose config validation, and git diff --check passed. Docker Compose UI image build was attempted but could not connect because the Docker Desktop Linux engine pipe was unavailable.
+- Manual desktop/mobile, keyboard/accessibility, and genuine API/model acceptance remain open. The known OpenAI insufficient-quota issue blocks confirmation of a real agent response. Shared staff-review token/RBAC and production security controls remain release blockers.
+- No commit/push, secret access, or real patient data use.
+
+### Phase 4 workflow safety revalidation - 2026-10-20
+- Started work on `feat/phase-4-agent-workflow-safety`, preserving the existing uncommitted Phase 2/3 edits.
+- Existing automated coverage for routing, appointment booking/cancellation/rescheduling intent, FAQ unknown-answer fallback, pending-action exact confirmation/decline/expiry/session scoping, human handoff status, and patient isolation was revalidated.
+- Focused suite: 66 passed in 8.75s. Full suite: 130 passed in 11.13s.
+- No implementation change was made because this pass found no failing automated regression requiring a code change. Phase 4 remains in progress: live bilingual model acceptance is blocked by OpenAI API 429 insufficient_quota; clinic-approved knowledge/current availability and a staffed human escalation destination are still absent. Automated tests do not prove production readiness.
+- No commit or push performed; no secrets or real patient data used.
+
+### Phase 5 data readiness - 2026-10-20
+- Switched to `feat/phase-5-approved-clinic-data`; preserved existing working-tree changes and did not commit/push.
+- Stopped the temporary local UI/API demo processes and removed the temporary demo-auth bypass from the UI source. Normal patient sign-in and API patient-session enforcement are restored in source; no `.env` values were modified.
+- Confirmed `data/clinic_faq.json` is empty. Existing appointment/demo fixtures are synthetic/historical, not an approved live schedule. No fabricated clinic facts or live availability were added.
+- Strict FAQ validation, FAQ behavior and synthetic-data safety tests: 21 passed. Full suite: 130 passed in 11.38s.
+- Phase 5 remains blocked for real-clinic use until a clinic owner supplies/reviews current FAQ and schedule data and documents source, timezone, ownership and update/expiry rules. Docker Desktop engine was unavailable; no container runtime validation was possible.
+
+### Phase 6 handoff lifecycle hardening - 2026-10-20
+- Started branch `feat/phase-6-handoff-lifecycle`, preserving working-tree edits. Not yet pushed: Phase 5 remains blocked on clinic-owned data, and `streamlit_ui.py` needs encoding repair before a safe publish.
+- Added a strict SQLite handoff status transition graph and transactional status updates; terminal resolved/cancelled cases cannot be reopened, unknown case IDs return false, and invalid transitions raise a validation error.
+- Handoff tests: 10 passed. Full suite: 132 passed in 12.30s.
+- External staffed notification, authenticated staff case-management, and approved retention/deletion policy remain open; local queue is not represented as a live human handoff.
