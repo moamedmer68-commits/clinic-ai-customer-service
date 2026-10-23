@@ -290,3 +290,21 @@ After Phase 0 passes, start Phase 1 by agreeing the registration fields and iden
 - Patient account tests: 10 passed. Full suite: 134 passed in 15.48s. Compile checks and dependency checks pass.
 - Phase 7 remains in progress: production database migrations, role-based staff identities, login rate limiting, password recovery, audit trail, retention/deletion workflows, HTTPS/secret rotation, backups/restore, and load/security validation are not complete. The shared staff review token remains a prototype control and is not production RBAC.
 - No `.env` secrets or real patient data accessed. No Docker runtime verification due unavailable Docker Desktop engine.
+
+
+### 2026-10-23 — Phase 7/8 security and verification checkpoint
+- Added persistent login throttling and minimal security audit events in security_controls.py; wired them into patient login and staff account approval/deactivation. Five invalid-credential attempts for the same normalized email identifier trigger a 15-minute lockout; successful login clears the failed-attempt record.
+- Added tests for lockout, HTTP 429 response, audit-event data minimization, and clearing failures after successful login.
+- Updated Dockerfile and GitHub Actions compile step to include security_controls.py.
+- Verification: patient account tests 12 passed; full pytest suite 136 passed in 18.82s; compileall passed; pip check passed; docker compose config --quiet passed; git diff --check passed with an LF/CRLF warning.
+- Phase 7 remains in progress. This per-identifier lockout is not a substitute for edge/IP rate limiting; shared staff token/RBAC, database migrations, account recovery, privacy/retention controls, TLS/secret rotation, backups/restore, and security/load testing remain open.
+- Phase 8 remains in progress. Docker Compose image build could not execute because Docker Desktop's Linux engine pipe is unavailable. No push/commit was performed to trigger hosted CI. PostgreSQL runtime, manual bilingual/responsive/accessibility acceptance, real OpenAI model smoke test, staging, backup/restore and rollback rehearsal, and explicit release approval remain outstanding.
+- No secrets or real patient data were accessed. No commit, push, reset, or deletion performed.
+
+
+### 2026-10-23 — Phase 9/10 validation and project report
+- Revalidated existing frontend behavior and production-readiness controls; no broad UI rewrite was needed because the current UI already includes bilingual onboarding/chat, session controls, validation, loading/errors and escalation status.
+- Focused UI/API/handoff tests: 44 passed in 3.31s. Full suite: 136 passed in 15.18s. Compileall passed; pip check passed; Compose configuration passed; git diff --check passed with LF/CRLF notices.
+- Docker image/runtime verification remains blocked because Docker Desktop's Linux engine pipe is unavailable. No hosted CI run was triggered because no push was authorized.
+- Added docs/PROJECT_COMPLETION_REPORT_2026-10-23.md and updated README's test count to 136. The report distinguishes prototype functionality from production release blockers.
+- Phase 9 manual browser/accessibility/live API acceptance and Phase 10 operational/security/clinic approval gates remain open. No secrets or real patient data accessed; no commit, push, or deployment.

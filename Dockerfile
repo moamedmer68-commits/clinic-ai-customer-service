@@ -10,7 +10,7 @@ COPY requirements-runtime.txt ./
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r requirements-runtime.txt
 
-COPY agent.py main.py streamlit_ui.py ui_helpers.py knowledge_base.py patient_accounts.py ./
+COPY agent.py main.py streamlit_ui.py ui_helpers.py knowledge_base.py patient_accounts.py security_controls.py ./
 COPY data_models ./data_models
 COPY prompt_library ./prompt_library
 COPY toolkit ./toolkit

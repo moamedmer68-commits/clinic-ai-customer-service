@@ -68,7 +68,7 @@ doctor-appoitment-multiagent/
 │   ├── prepare_demo_data.ps1 # PowerShell script to copy synthetic demo data into runtime-data/
 │   └── demo_data/           # Ready-to-use synthetic bilingual FAQs and 2026 appointment slots
 ├── docs/                    # Detailed operational guides (RAG, Memory, Escalation, CI/CD, Roadmaps)
-├── tests/                   # 130 automated Pytest tests (API, agents, RAG, tools, auth, UI)
+├── tests/                   # 136 automated Pytest tests (API, agents, RAG, tools, auth, UI)
 ├── Dockerfile               # Non-root Python 3.12 container image
 ├── docker-compose.yml       # Full stack: PostgreSQL (db) + FastAPI (api) + Streamlit (ui)
 └── requirements-runtime.txt # Pinned runtime dependencies
@@ -179,7 +179,7 @@ docker compose up --build
 
 ## 5. Running Tests
 
-Run the full offline test suite (130 tests) without needing an active OpenAI connection:
+Run the full offline test suite (136 tests at the latest verified checkpoint) without needing an active OpenAI connection:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider

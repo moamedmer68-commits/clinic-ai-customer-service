@@ -21,6 +21,10 @@ from patient_accounts import (
     account_for_token, approve_account, authenticate_and_create_session,
     create_pending_account, deactivate_account, initialize_database, make_engine, revoke_token, session_factory,
 )
+from security_controls import (
+    clear_login_failures, initialize_security_tables, login_is_locked,
+    record_login_failure, security_session_factory, write_audit_event,
+)
 
 load_dotenv()
 
@@ -186,6 +190,7 @@ def create_app() -> FastAPI:
         app.state.patient_db_error = None
         app.state.patient_engine = None
         app.state.patient_session_factory = None
+        app.state.security_session_factory = None
         try:
             app.state.graph, app.state.checkpoint_connection = _build_graph()
             logger.info("Application dependencies initialized")
@@ -198,7 +203,9 @@ def create_app() -> FastAPI:
                 Path(database_url.replace("sqlite:///", "", 1)).parent.mkdir(parents=True, exist_ok=True)
             app.state.patient_engine = make_engine(database_url)
             initialize_database(app.state.patient_engine)
+            initialize_security_tables(app.state.patient_engine)
             app.state.patient_session_factory = session_factory(app.state.patient_engine)
+            app.state.security_session_factory = security_session_factory(app.state.patient_engine)
         except Exception as exc:
             app.state.patient_db_error = type(exc).__name__
             logger.error("Patient account database initialization failed: %s", type(exc).__name__)
@@ -295,8 +302,24 @@ def create_app() -> FastAPI:
 
     @api.post("/patients/login")
     def login_patient(payload: PatientLogin, request: Request):
+        security_factory = request.app.state.security_session_factory
+        if security_factory is None:
+            return _error_response(request, 503, "security_store_unavailable", "Authentication security controls are unavailable.")
+        with security_factory() as security_db:
+            if login_is_locked(security_db, payload.email):
+                write_audit_event(security_db, event_type="login_throttled", request_id=request.state.request_id)
+                return _error_response(request, 429, "login_temporarily_locked", "Too many failed attempts. Try again in 15 minutes.")
         with _db_session(request) as db:
             account, token = authenticate_and_create_session(db, email=payload.email, password=payload.password)
+        with security_factory() as security_db:
+            if account is None:
+                record_login_failure(security_db, payload.email)
+                write_audit_event(security_db, event_type="login_failed", request_id=request.state.request_id)
+            elif account.status == "approved" and token:
+                clear_login_failures(security_db, payload.email)
+                write_audit_event(security_db, event_type="login_succeeded", request_id=request.state.request_id, target_account_id=account.id)
+            else:
+                write_audit_event(security_db, event_type="login_not_approved", request_id=request.state.request_id, target_account_id=account.id)
         if account is None:
             return _error_response(request, 401, "invalid_credentials", "Email or password is incorrect.")
         if account.status != "approved" or token is None:
@@ -353,6 +376,8 @@ def create_app() -> FastAPI:
                 return _error_response(request, 409, "registration_state_conflict", "The registration is not awaiting review.")
         if account is None:
             return _error_response(request, 404, "registration_not_found", "Registration was not found.")
+        with request.app.state.security_session_factory() as security_db:
+            write_audit_event(security_db, event_type="staff_account_approved", request_id=request.state.request_id, target_account_id=account.id)
         return {"status": "approved", "patient": _safe_account(account), "request_id": request.state.request_id}
 
     @api.post("/staff/accounts/{account_id}/deactivate")
@@ -364,6 +389,8 @@ def create_app() -> FastAPI:
             account = deactivate_account(db, account_id)
         if account is None:
             return _error_response(request, 404, "account_not_found", "Patient account was not found.")
+        with request.app.state.security_session_factory() as security_db:
+            write_audit_event(security_db, event_type="staff_account_deactivated", request_id=request.state.request_id, target_account_id=account.id)
         logger.info("Patient account deactivated by staff", extra={"request_id": request.state.request_id})
         return {"status": "deactivated", "patient": _safe_account(account), "request_id": request.state.request_id}
 

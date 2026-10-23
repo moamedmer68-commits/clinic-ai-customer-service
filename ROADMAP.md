@@ -483,3 +483,25 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Added a staff-authorized account deactivation endpoint. It marks the patient account deactivated and revokes all active sessions transactionally; unauthenticated staff requests are denied and missing accounts return 404.
 - Account tests: 10 passed; full suite: 134 passed in 15.48s.
 - Phase 7 remains in progress: production migrations, staff RBAC, rate limiting, account recovery, audit/privacy lifecycle, HTTPS/secret rotation, backup/restore and load/security tests remain open. Docker runtime check unavailable.
+
+
+### Phase 7/8 continuation — security controls and verification — 2026-10-23
+- Added security_controls.py with persistent database-backed login throttling (five invalid-credential attempts per normalized email identifier triggers a 15-minute lock) and minimal security audit events. Audit rows store event type, request ID, timestamp, and optional internal account ID; they deliberately exclude email, phone, Patient ID, password, tokens, and request bodies.
+- Wired the controls into the patient login flow and staff account approval/deactivation routes. Successful login clears the associated failed-attempt record; locked attempts return HTTP 429.
+- Added regression tests for lockout after five failures, HTTP 429 behavior, audit-event minimization, and clearing failures after successful login.
+- Updated Dockerfile to include the new module and CI compile step to compile it.
+- Verification on the current working tree: patient account tests — 12 passed; full suite — 136 passed in 18.82s; compileall passed; pip check reported no broken requirements; docker compose config --quiet passed; git diff --check passed (only LF/CRLF working-copy warning).
+- Phase 8 container build attempted via docker compose build but could not run because Docker Desktop's Linux engine pipe is unavailable (dockerDesktopLinuxEngine not found). No hosted CI run was dispatched because that requires pushing, and no push/commit was authorized. No deployment was attempted.
+- Phase 7 remains IN PROGRESS: login throttling is per email identifier and does not replace edge/IP rate limits; staff access still uses a shared token rather than individual identities/RBAC; production database migrations, recovery, retention/deletion policy, TLS/secret rotation, backup/restore, and load/security review remain open.
+- Phase 8 remains IN PROGRESS: local tests/config checks pass, but image build, PostgreSQL container/runtime validation, manual bilingual/responsive/accessibility acceptance, live OpenAI-backed UI-to-agent smoke test (previously blocked by OpenAI quota), staging, restore/rollback rehearsal, and release approval remain outstanding.
+- No commit, push, reset, or deletion performed. No secrets or real patient data were read or used.
+
+
+### Phase 9/10 execution entry — 2026-10-23
+- Revalidated Phase 9 frontend/UI and Phase 10 production-readiness checks against the roadmap and current source tree. Existing UI implementation already includes bilingual registration/sign-in, chat transcript, session controls, input validation, loading/error feedback and handoff status; no unrelated UI rewrite was warranted.
+- Focused verification command: `.\\.venv\\Scripts\\python.exe -m pytest tests\\test_ui_helpers.py tests\\test_streamlit_ui.py tests\\test_api.py tests\\test_handoff.py -q -p no:cacheprovider --basetemp=.pytest-tmp-phase9-10-focused` — 44 passed in 3.31s.
+- Full verification command: `.\\.venv\\Scripts\\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp-phase9-10-full` — 136 passed in 15.18s. `compileall` passed; `pip check` reported no broken requirements; `docker compose config --quiet` passed; `git diff --check` passed with LF/CRLF working-copy notices.
+- Docker Desktop Linux engine was unavailable (`dockerDesktopLinuxEngine` pipe missing), so a new image build or Compose runtime smoke test could not be completed. Hosted CI was not triggered because the working tree remains uncommitted/unpushed.
+- Added `docs/PROJECT_COMPLETION_REPORT_2026-10-23.md` with the phase-by-phase implementation summary, architecture, verification evidence and production blockers. Updated README's stale test count from 130 to 136.
+- Phase 9 remains in progress until manual browser/mobile/responsive/keyboard accessibility and real API/model acceptance are performed. Phase 10 remains in progress pending staff RBAC, edge/IP rate limiting, account recovery, retention/privacy controls, managed transactional persistence, approved clinic FAQ/current schedule, staffed escalation, Docker/runtime validation, backup/restore, security/load testing, staging and rollback approval.
+- No commit, push, deployment, reset, or deletion performed. No secrets or real patient data were accessed.

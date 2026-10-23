@@ -242,3 +242,64 @@ def test_deactivate_missing_account_returns_not_found(monkeypatch, tmp_path):
             headers={"X-Staff-Review-Key": "test-staff-review-token"},
         )
         assert response.status_code == 404
+
+
+def test_login_throttle_locks_after_five_bad_passwords_and_audit_is_minimal(monkeypatch, tmp_path):
+    from sqlalchemy import select
+    from security_controls import SecurityAuditEvent
+
+    with _client(monkeypatch, tmp_path) as client:
+        assert _register(client).status_code == 202
+        pending = client.get("/staff/pending-registrations", headers={
+            "X-Staff-Review-Key": "test-staff-review-token",
+        }).json()["items"][0]
+        assert _approve(client, pending["account_id"]).status_code == 200
+
+        for _ in range(5):
+            response = client.post("/patients/login", json={
+                "email": "patient@example.test",
+                "password": "incorrect-password",
+            })
+            assert response.status_code == 401
+
+        blocked = client.post("/patients/login", json={
+            "email": "patient@example.test",
+            "password": "A-long-test-password-123",
+        })
+        assert blocked.status_code == 429
+        assert blocked.json()["error"]["code"] == "login_temporarily_locked"
+
+        factory = client.app.state.security_session_factory
+        with factory() as db:
+            events = db.scalars(select(SecurityAuditEvent)).all()
+            assert any(event.event_type == "login_failed" for event in events)
+            assert any(event.event_type == "login_throttled" for event in events)
+            assert all(not hasattr(event, "email") for event in events)
+            assert all(not hasattr(event, "token") for event in events)
+
+
+def test_successful_login_clears_failed_attempts(monkeypatch, tmp_path):
+    from security_controls import LoginThrottle
+    from sqlalchemy import select
+
+    with _client(monkeypatch, tmp_path) as client:
+        assert _register(client).status_code == 202
+        pending = client.get("/staff/pending-registrations", headers={
+            "X-Staff-Review-Key": "test-staff-review-token",
+        }).json()["items"][0]
+        assert _approve(client, pending["account_id"]).status_code == 200
+
+        for _ in range(2):
+            assert client.post("/patients/login", json={
+                "email": "patient@example.test",
+                "password": "incorrect-password",
+            }).status_code == 401
+
+        success = client.post("/patients/login", json={
+            "email": "patient@example.test",
+            "password": "A-long-test-password-123",
+        })
+        assert success.status_code == 200
+
+        with client.app.state.security_session_factory() as db:
+            assert db.scalar(select(LoginThrottle)) is None
