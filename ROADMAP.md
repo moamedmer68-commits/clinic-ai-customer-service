@@ -505,3 +505,21 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Added `docs/PROJECT_COMPLETION_REPORT_2026-10-23.md` with the phase-by-phase implementation summary, architecture, verification evidence and production blockers. Updated README's stale test count from 130 to 136.
 - Phase 9 remains in progress until manual browser/mobile/responsive/keyboard accessibility and real API/model acceptance are performed. Phase 10 remains in progress pending staff RBAC, edge/IP rate limiting, account recovery, retention/privacy controls, managed transactional persistence, approved clinic FAQ/current schedule, staffed escalation, Docker/runtime validation, backup/restore, security/load testing, staging and rollback approval.
 - No commit, push, deployment, reset, or deletion performed. No secrets or real patient data were accessed.
+
+
+## 2026-10-24 development-plan checkpoint
+- Rechecked local service readiness: FastAPI /health/ready returned HTTP 200 and Streamlit / returned HTTP 200 after starting both services locally.
+- The latest full automated suite on the working tree passed 136 tests in 16.96s; Python compile checks and git diff --check passed. These checks do not prove a successful live OpenAI chat or production readiness.
+- Phase 0 remains blocked for acceptance because the last documented OpenAI model invocation returned 429 insufficient_quota / credit_balance_exhausted. A successful UI-to-agent model response was not demonstrated in this checkpoint.
+- Prepared docs/REGISTRATION_IDENTITY_DESIGN.md for Phase 1, covering minimum-data registration, staff review/email/SMS verification options, acceptance criteria, and decisions needed from the clinic owner. No verification provider or identity method was invented and no new identity-verification code was added before approval.
+- Phase 2/3 existing account and bilingual UI implementation remains in progress; Phase 4 still needs live Arabic/English workflow acceptance; Phase 5 is blocked on clinic-approved FAQ and current authorized schedule; Phase 6 needs staffed handoff and retention policy; Phase 7 needs named staff RBAC, production database migrations, rate limiting, privacy/security/backup controls; Phase 8 needs container/runtime, manual UI, staging, recovery/rollback, and release approval evidence.
+- No secrets or real patient data accessed. No commit, push, reset, or deletion performed.
+
+
+### 2026-10-24 — Codebase refactoring audit
+- Began the requested codebase cleanup with a repository/architecture audit documented in `docs/REFACTORING_AUDIT_2026-10-24.md`. Reviewed README, runtime/test dependency manifests, Dockerfile, roadmap/development plan, API, agent, UI, account/session, RAG, security, tool, support, data-model, and utility modules.
+- Updated README onboarding/API guidance to match the current approved direct-registration decision (no identity verification or staff approval for new registrations). Existing staff endpoints are described as legacy; no migration or deletion of legacy routes/data was performed.
+- Baseline full suite: 10 failed, 126 passed in 14.81s. All 10 failures are existing account tests asserting the former HTTP 202 pending-review contract, while the working-tree API returns HTTP 201 and an authenticated session. This mismatch is recorded and must be resolved with behavior-specific tests; no failures were suppressed.
+- Ruff is not installed in the current virtual environment, so no Ruff result is claimed and no dependency was added. The large historical `requirements.txt` was not pruned because `setup.py` consumes it as `install_requires` and it may serve notebooks/experiments or downstream installs. Runtime dependencies remain separately pinned in `requirements-runtime.txt`.
+- No broad module moves or agent/prompt changes were made because Docker COPY paths and tests rely on the existing module layout, and the audit did not establish safe redundant agent layers. Arabic UI encoding repair is deferred to a focused change.
+- No commit, push, reset, deletion, secret access, or real-patient-data use. Full refactor is not complete; next priority is reconciling registration behavior and account tests, then rerunning validation.

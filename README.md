@@ -29,7 +29,7 @@ flowchart TD
     Tools --> CSV[("Appointments CSV (doctor_availability.csv)")]
 ```
 
-1. **Patient Onboarding & Auth:** New patients register (`POST /patients/register`), get approved by clinic staff (`POST /staff/registrations/{id}/approve`) to receive an 8-digit `patient_id`, and sign in (`POST /patients/login`).
+1. **Patient Onboarding & Auth:** New patients register (`POST /patients/register`) and receive an 8-digit `patient_id` plus an authenticated bearer session immediately; returning patients sign in (`POST /patients/login`). Identity verification and staff approval are not part of self-registration. Password hashing, session expiry/revocation, login throttling, and patient-scoped authorization remain required.
 2. **Supervisor Routing:** Every message goes to the LangGraph `supervisor`, which routes it to the right specialist:
    - **`faq_node`:** Searches approved clinic FAQs using OpenAI embeddings (`knowledge_base.py`). Refuses medical advice and escalates unknown questions.
    - **`information_node`:** Checks available slots by doctor or specialty (`toolkit/toolkits.py`).
@@ -139,17 +139,7 @@ docker compose up --build
 
 ### 1. Using the Chat Interface (`http://127.0.0.1:8501`)
 1. **Register:** Open the **Create account** tab in Streamlit and submit a name, email, and password (`>= 12` chars).
-2. **Approve the Account (Staff Step):** Approve the pending registration using the staff endpoint so the system issues an 8-digit `patient_id`:
-   ```powershell
-   # Check pending accounts
-   Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8003/staff/pending-registrations" `
-     -Headers @{"X-Staff-Review-Key" = "your_staff_secret_token"}
-
-   # Approve account_id = 1
-   Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8003/staff/registrations/1/approve" `
-     -Headers @{"X-Staff-Review-Key" = "your_staff_secret_token"}
-   ```
-3. **Sign In & Chat:** Log in under the **Sign in** tab and start chatting:
+2. **Start Chatting:** After successful registration, the app signs you in automatically and displays the server-issued 8-digit `patient_id`. Returning patients can use the **Sign in** tab. No staff approval or identity-verification step is required for self-registration.
    - *Ask FAQs:* `"What are your opening hours?"`
    - *Check availability:* `"Is Dr John Doe available on 12-10-2026?"`
    - *Book/Cancel/Reschedule:* `"Book an appointment with Dr John Doe on 12-10-2026 at 09:00"` -> then reply `YES` (or `نعم`) to confirm.
@@ -159,9 +149,9 @@ docker compose up --build
 | Endpoint | Method | Purpose |
 | :--- | :--- | :--- |
 | `/health/live` & `/health/ready` | `GET` | Liveness and readiness health checks |
-| `/patients/register` | `POST` | Register a new patient account (`pending_review`) |
-| `/staff/pending-registrations` | `GET` | List accounts awaiting staff approval (`X-Staff-Review-Key`) |
-| `/staff/registrations/{id}/approve` | `POST` | Approve account and generate 8-digit `patient_id` (`X-Staff-Review-Key`) |
+| `/patients/register` | `POST` | Create a patient account, generate an 8-digit `patient_id`, and return an authenticated bearer session (HTTP 201) |
+| `/staff/pending-registrations` | `GET` | Legacy staff queue for accounts created under the previous pending-review flow |
+| `/staff/registrations/{id}/approve` | `POST` | Legacy approval endpoint; not required for new self-registration |
 | `/patients/login` | `POST` | Authenticate and get a 12-hour `Bearer` token |
 | `/patients/me` & `/patients/logout` | `GET` / `POST` | View active patient profile or revoke session token |
 | `/execute` | `POST` | Send chat messages or `YES`/`NO` confirmations (`X-API-Key` + `Bearer` token) |

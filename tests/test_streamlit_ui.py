@@ -40,17 +40,20 @@ def test_streamlit_ui_shows_registration_and_login_before_authentication(monkeyp
     assert not any("Demo Patient ID" in item.label for item in at.text_input)
 
 
-def test_registration_posts_fields_and_never_displays_a_patient_id_before_approval(monkeypatch):
+def test_registration_creates_session_and_issues_patient_id_immediately(monkeypatch):
     calls = []
 
     def fake_post(url, **kwargs):
         calls.append((url, kwargs))
-        return FakeResponse({"status": "pending_review"}, 202)
+        return FakeResponse({
+            "status": "approved",
+            "access_token": "new-session-token",
+            "token_type": "bearer",
+            "patient": {"status": "approved", "patient_id": "12345678", "full_name": "Test Patient"},
+        }, 201)
 
     monkeypatch.setattr(requests, "post", fake_post)
     at = AppTest.from_file(str(APP_PATH)).run()
-
-    # Registration inputs are rendered before login inputs in the first tab.
     at.text_input[0].set_value("Test Patient")
     at.text_input[1].set_value("patient@example.test")
     at.text_input[2].set_value("+201000000000")
@@ -64,8 +67,8 @@ def test_registration_posts_fields_and_never_displays_a_patient_id_before_approv
     assert calls[0][1]["json"]["email"] == "patient@example.test"
     assert calls[0][1]["json"]["phone"] == "+201000000000"
     assert calls[0][1]["json"]["password"] == "A-long-test-password-123"
-    assert any("Registration received" in item.value for item in at.success)
-    assert not any("Patient ID" in item.value for item in at.markdown)
+    assert at.session_state["auth_token"] == "new-session-token"
+    assert at.session_state["patient_profile"]["patient_id"] == "12345678"
 
 
 def test_login_stores_issued_patient_profile_and_bearer_token(monkeypatch):

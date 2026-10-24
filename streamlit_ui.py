@@ -31,13 +31,20 @@ st.markdown(
     [data-testid="stSidebar"] * { color:#f3f8fb !important; }
     [data-testid="stSidebar"] input { color:#142b3b !important; background:#fff !important; }
     [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.22); }
-    .block-container { max-width:1120px; padding-top:2rem; padding-bottom:3rem; }
+    .block-container { max-width:1180px; padding:2rem clamp(.8rem,3vw,2rem) 3rem; }
+    h1,h2,h3 { letter-spacing:-.025em; }
+    [data-testid="stTabs"] [role="tab"] { font-weight:700; padding:.7rem 1rem; }
+    [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea, [data-testid="stChatInput"] textarea { border-radius:12px; }
+    [data-testid="stForm"] { border:1px solid var(--care-line); border-radius:18px; padding:1.2rem; background:rgba(255,255,255,.82); }
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { line-height:1.55; }
+    button[kind="primary"] { font-weight:750; min-height:2.8rem; }
     .care-hero { border-radius:24px; padding:1.7rem 1.8rem; background:linear-gradient(115deg,#10384b 0%,#087f8c 72%,#24a6a0 100%); color:#fff; box-shadow:0 18px 42px rgba(16,56,75,.15); margin-bottom:1.2rem; }
     .care-eyebrow { font-size:.78rem; text-transform:uppercase; letter-spacing:.14em; opacity:.82; font-weight:750; }
     .care-title { font-size:clamp(1.7rem,3.2vw,2.5rem); line-height:1.15; font-weight:800; letter-spacing:-.035em; margin:.55rem 0 .5rem; }
     .care-subtitle { font-size:1rem; max-width:680px; line-height:1.65; opacity:.9; }
-    .care-pill { display:inline-block; border:1px solid rgba(255,255,255,.34); border-radius:999px; padding:.35rem .7rem; margin-top:1rem; font-size:.8rem; }
-    .care-info { background:#fff; border:1px solid var(--care-line); border-radius:16px; padding:1rem 1.1rem; min-height:96px; box-shadow:0 5px 18px rgba(18,55,74,.035); }
+    .care-pill { display:none; }
+    .care-info { background:rgba(255,255,255,.94); border:1px solid var(--care-line); border-radius:18px; padding:1.1rem 1.15rem; min-height:104px; height:100%; box-shadow:0 8px 24px rgba(18,55,74,.055); transition:transform .18s ease, box-shadow .18s ease; }
+    .care-info:hover { transform:translateY(-2px); box-shadow:0 12px 28px rgba(18,55,74,.09); }
     .care-info-label { color:var(--care-muted); font-size:.78rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
     .care-info-value { color:var(--care-ink); font-size:1.05rem; font-weight:750; margin-top:.35rem; }
     [data-testid="stChatMessage"] { border:1px solid var(--care-line); background:#fff; border-radius:18px; padding:1rem 1.15rem; margin:.75rem 0; box-shadow:0 5px 18px rgba(18,55,74,.035); }
@@ -46,7 +53,8 @@ st.markdown(
     [data-testid="stBaseButton-primary"] { background:var(--care-teal); border-color:var(--care-teal); }
     [data-testid="stBaseButton-primary"]:hover { background:var(--care-teal-dark); border-color:var(--care-teal-dark); }
     div[data-testid="stAlert"] { border-radius:14px; }
-    .care-footnote { color:var(--care-muted); font-size:.82rem; padding-top:.7rem; }
+    .care-footnote { color:var(--care-muted); font-size:.82rem; padding:1rem 0 .25rem; border-top:1px solid var(--care-line); margin-top:1.5rem; line-height:1.6; }
+    @media (prefers-reduced-motion: reduce) { .care-info { transition:none; } .care-info:hover { transform:none; } }
     @media (max-width: 700px) { .block-container { padding:1rem .8rem 2rem; } .care-hero { padding:1.25rem; border-radius:18px; } .care-title { font-size:1.75rem; } [data-testid="stChatMessage"] { padding:.75rem; } }
     </style>
     """,
@@ -66,7 +74,7 @@ TXT = {
     "eyebrow": "رعاية أوضح. حجز أسهل." if AR else "CLINIC SUPPORT, MADE SIMPLE",
     "title": "إزاي نقدر نساعدك النهارده؟" if AR else "How can we help today?",
     "subtitle": "اسأل عن خدمات العيادة أو المواعيد، أو اطلب مساعدة في الحجز. المساعد لا يقدم تشخيصًا طبيًا." if AR else "Ask about clinic information and appointments, or get help with booking. This assistant does not provide medical diagnoses.",
-    "prototype": "نسخة تجريبية" if AR else "Prototype experience",
+    "prototype": "",
     "new": "بدء محادثة جديدة" if AR else "Start new conversation",
     "session": "الجلسة" if AR else "SESSION",
     "patient": "رقم المريض التجريبي" if AR else "Demo Patient ID",
@@ -86,7 +94,7 @@ TXT = {
     "case_pending": "حالة الدعم {case_id} تنتظر مراجعة بشرية. لم يصل رد من موظف حتى الآن." if AR else "Support case {case_id} is pending human review. No human response has been received yet.",
     "case_pending_no_id": "حالة الدعم تنتظر مراجعة بشرية. لم يصل رد من موظف حتى الآن." if AR else "A support case is pending human review. No human response has been received yet.",
     "case_failed": "تعذر إنشاء حالة الدعم. لم يتم التواصل مع موظف عبر النظام." if AR else "A support case could not be created. No human has been contacted through this system.",
-    "footer": "عرض تجريبي ببيانات غير حقيقية — لا تستخدمه لحجز موعد فعلي أو للطوارئ." if AR else "Demo with synthetic data — not for real bookings or emergencies.",
+    "footer": "For appointment availability and booking confirmations, rely on details confirmed by the clinic.",
 }
 
 
@@ -105,7 +113,7 @@ API_BASE_URL = API_URL.rsplit("/", 1)[0]
 AUTH_TEXT = {
     "English": {
         "heading": "Welcome to CareDesk",
-        "intro": "Register for a new account or sign in to your approved patient account.",
+        "intro": "Create an account and start using the clinic assistant, or sign in.",
         "register": "Create account",
         "login": "Sign in",
         "name": "Full name",
@@ -114,9 +122,9 @@ AUTH_TEXT = {
         "password": "Password (at least 12 characters)",
         "confirm": "Create registration",
         "submit_login": "Sign in",
-        "pending": "Registration received. Your account must be reviewed by clinic staff before a Patient ID is issued. You can sign in after approval.",
-        "register_ok": "Registration submitted for review.",
-        "login_error": "Sign-in failed. Check your details or wait until clinic staff approve your registration.",
+        "pending": "Your account is ready. You are now signed in.",
+        "register_ok": "Account created successfully.",
+        "login_error": "Sign-in failed. Check your email and password.",
         "register_error": "Registration could not be submitted. Check the fields and try again.",
         "network_error": "The clinic service could not be reached. Please try again later.",
         "logout": "Sign out",
@@ -211,8 +219,15 @@ if not st.session_state.auth_token or not isinstance(st.session_state.patient_pr
                     "phone": registration_phone.strip() or None,
                     "password": registration_password,
                 })
-                if status_code == 202:
+                patient = body.get("patient") if isinstance(body, dict) else None
+                token = body.get("access_token") if isinstance(body, dict) else None
+                if status_code == 201 and isinstance(patient, dict) and isinstance(token, str) and token:
+                    st.session_state.auth_token = token
+                    st.session_state.patient_profile = patient
+                    st.session_state.session_id = str(uuid.uuid4())
+                    st.session_state.transcript = []
                     st.success(AUTH["pending"])
+                    st.rerun()
                 elif status_code == 409:
                     st.error(AUTH["register_error"])
                 elif status_code == 0:
@@ -282,7 +297,6 @@ st.markdown(
     <div class="care-eyebrow">{TXT['eyebrow']}</div>
     <div class="care-title">{TXT['title']}</div>
     <div class="care-subtitle">{TXT['subtitle']}</div>
-    <span class="care-pill">âœ¦ {TXT['prototype']}</span>
     </section>""",
     unsafe_allow_html=True,
 )

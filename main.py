@@ -288,17 +288,22 @@ def create_app() -> FastAPI:
     def _safe_account(account):
         return {"status": account.status, "patient_id": account.patient_id, "full_name": account.full_name}
 
-    @api.post("/patients/register", status_code=202)
+    @api.post("/patients/register", status_code=201)
     def register_patient(payload: PatientRegistration, request: Request):
         with _db_session(request) as db:
             try:
                 account = create_pending_account(
                     db, full_name=payload.full_name, email=payload.email, phone=payload.phone, password=payload.password
                 )
-                logger.info("Patient registration stored for manual review", extra={"request_id": request.state.request_id})
+                # Product decision: self-registration does not require identity verification or staff approval.
+                account = approve_account(db, account.id)
+                account, token = authenticate_and_create_session(db, email=payload.email, password=payload.password)
+                if account is None or token is None:
+                    raise RuntimeError("Newly registered account could not establish a session")
+                logger.info("Patient self-registration completed", extra={"request_id": request.state.request_id})
             except ValueError:
                 return _error_response(request, 409, "registration_conflict", "An account with this email already exists.")
-        return {"status": "pending_review", "message": "Registration received. A clinic staff member must verify your identity before approval.", "request_id": request.state.request_id}
+        return {"status": "approved", "access_token": token, "token_type": "bearer", "expires_in": 43200, "patient": _safe_account(account), "request_id": request.state.request_id}
 
     @api.post("/patients/login")
     def login_patient(payload: PatientLogin, request: Request):

@@ -12,7 +12,7 @@
 1. **LLM provider:** Keep OpenAI. Do not migrate to Gemini or change the model/provider as part of this work.
 2. **New patients:** A first-time user can register through the application.
 3. **Patient ID:** The system generates a unique Patient ID only after the registration/identity-verification flow succeeds. Typing an arbitrary number is not identity verification.
-4. **Identity verification:** Required as part of registration. The exact verification method and required fields are still to be agreed before implementing this part.
+4. **Identity verification:** The product owner explicitly chose NO identity verification for self-registration (2026-10-24). No email/SMS OTP or staff approval is required. This decision is recorded, but implementation is INCOMPLETE until the API, UI, and tests support direct registration, unique Patient ID issuance, and automatic sign-in. Authentication, password hashing, session controls, and per-patient authorization remain mandatory.
 5. **Target:** Move toward production readiness, not just a local demo.
 6. **Languages:** Support both Arabic and English in the user experience and conversations.
 7. **Development discipline:** Work one phase at a time. Inspect the current repository state first, preserve user work, add/update tests, run verification, and summarize the evidence at each phase exit.
@@ -66,15 +66,19 @@ The phases below are the execution order for the next development cycle. Existin
 **Exit criteria:** the UI-to-API-to-OpenAI-to-agent flow succeeds, or an exact reproducible blocker is documented. Health endpoint success alone is insufficient.
 
 ### Phase 1 â€” Patient registration and identity requirements
-**Status: Not started. This phase must begin with a short design checklist before implementation.**
+**Status: INCOMPLETE — product decision approved 2026-10-24; implementation and acceptance tests remain open.**
 
-- Specify the registration fields and minimize collection of personally identifiable information.
-- Decide and document the identity-verification method before writing registration logic. Do not invent an OTP provider or treat possession of an arbitrary Patient ID as proof of identity.
-- Define duplicate-account handling, verification expiry/retry, lockout/rate limiting, recovery, consent/privacy notice, and account deactivation.
-- Define how unique Patient IDs are generated, guaranteed unique, displayed, and recovered without exposing other patients' records.
-- Specify Arabic/English validation and user-facing validation/error messages.
-- Choose production-appropriate persistent storage and migration strategy before introducing patient accounts; do not store account credentials or identity documents in plaintext.
-**Exit criteria:** an agreed registration/verification flow, data model, threat/privacy review, and testable acceptance criteria.
+- [x] Decision: do not require identity verification, email/SMS OTP, or staff approval for self-registration.
+- [ ] Register using full name, email, password, and optional phone; minimize collected personal data.
+- [ ] Generate a unique Patient ID during successful account creation and return it to the newly authenticated patient.
+- [ ] Establish an authenticated session automatically after successful registration; no pending-review step.
+- [ ] Keep duplicate-email handling, password hashing, session expiry/revocation, login throttling, and server-side validation.
+- [ ] Ensure patient-specific endpoints authorize the bearer session, not a typed Patient ID; test cross-patient isolation.
+- [ ] Update Arabic/English UI copy and forms to remove staff-approval/pending-review instructions and sign the patient in directly.
+- [ ] Define password recovery, privacy notice/consent, retention/deactivation, and account deletion responsibilities; do not invent a clinic policy.
+- [ ] Add tests for registration success/failure, duplicate email, unique Patient ID, automatic session, login/logout, and cross-patient isolation.
+- [ ] Verify existing pending-review accounts are not automatically granted access by an unreviewed migration.
+**Exit criteria:** direct registration, unique Patient ID, automatic sign-in, and authorization tests pass in both API and UI. This is account creation, not proof of real-world identity.
 
 ### Phase 2 â€” Secure patient accounts and Patient ID
 **Status: In progress; core account/session API implementation exists. Security verification is underway; account recovery, individual staff identities/RBAC, and live PostgreSQL runtime verification remain open.**
@@ -308,3 +312,28 @@ After Phase 0 passes, start Phase 1 by agreeing the registration fields and iden
 - Docker image/runtime verification remains blocked because Docker Desktop's Linux engine pipe is unavailable. No hosted CI run was triggered because no push was authorized.
 - Added docs/PROJECT_COMPLETION_REPORT_2026-10-23.md and updated README's test count to 136. The report distinguishes prototype functionality from production release blockers.
 - Phase 9 manual browser/accessibility/live API acceptance and Phase 10 operational/security/clinic approval gates remain open. No secrets or real patient data accessed; no commit, push, or deployment.
+
+
+### 2026-10-24 - Phase 0 restart and readiness recheck
+- Re-read this development plan and checked the current working tree before acting. Preserved the existing uncommitted streamlit_ui.py changes and both untracked development-plan reports; no cleanup, reset, staging, commit, or push.
+- Started the local FastAPI service on 127.0.0.1:8003 and Streamlit UI on 127.0.0.1:8501 using the existing virtual environment and local configuration; did not print or modify .env secrets.
+- Verification: GET /health/ready returned HTTP 200 (status=ok, API auth enabled); Streamlit root / returned HTTP 200.
+- Phase 0 is still BLOCKED for acceptance: this recheck did not establish a successful OpenAI-backed chat. The last documented real model request returned HTTP 429 insufficient_quota / credit_balance_exhausted. The next required action is to restore usable OpenAI API quota, then rerun the genuine UI-to-API-to-agent smoke test. Keep OpenAI as the provider.
+- As required by the phase gate, Phase 1 registration/identity implementation was not started while Phase 0 remains blocked; its identity-verification method and registration requirements also require explicit agreement. No real patient data was used.
+
+### 2026-10-24 - Phase 1 identity design prepared; implementation gated
+- Created docs/REGISTRATION_IDENTITY_DESIGN.md after inspecting the existing registration/login/approval endpoints, patient account model, and Compose database configuration.
+- The design documents the existing pending-review flow, minimum-data field proposal, and three identity-verification options (clinic staff review, email verification plus clinic approval, or SMS verification plus clinic approval), along with acceptance criteria and required clinic-owner decisions.
+- No identity-verification code or new PII collection was added because the plan explicitly requires the verification method and required fields to be agreed first. Staff approval currently relies on a shared token and must be replaced by named staff identities/RBAC before production exposure.
+- Phase 0 remains blocked by the previously reproduced OpenAI insufficient_quota / credit_balance_exhausted error. In this run, API readiness and Streamlit root both returned HTTP 200, but no successful real OpenAI chat was demonstrated. OpenAI provider unchanged.
+- Existing local edits and untracked reports preserved. No .env values printed or changed; no real patient data used; no commit/push.
+- Next action: restore usable OpenAI quota and perform the real UI-to-agent smoke test; product/clinic owner must choose the identity-verification method and confirm whether phone is mandatory before Phase 1 implementation can pass its design gate.
+
+
+### 2026-10-24 — Self-registration decision and partial implementation
+- Product owner explicitly confirmed: no identity verification. Phase 1 plan now records that decision as approved but INCOMPLETE until code and tests pass. Required behavior: register with name/email/password and optional phone, immediately issue unique Patient ID, establish bearer session automatically, and preserve password hashing, session controls, rate limiting, and per-patient authorization.
+- Updated the /patients/register API route to return HTTP 201, approve the newly created account without an identity-check step, create a session, and return the patient profile plus bearer token. This affects new registrations only; no migration was run to automatically grant access to existing pending-review accounts.
+- Updated the English onboarding copy and the Streamlit registration handler to accept the 201 response, store the issued token/profile server-side, and sign the patient in. Updated the UI test to expect the new direct-registration contract.
+- Verification currently FAILS: the focused account/UI suite reports 11 failed and 7 passed because tests/test_patient_accounts.py and related tests still assert the previous pending-review/staff-approval workflow. These tests must be rewritten to verify the new approved product decision before this phase can be accepted. Do not mark Phase 1 complete.
+- Arabic onboarding strings in streamlit_ui.py are already mojibake in the current file; this change did not attempt a broad encoding rewrite. Repair Arabic copy safely as a separate targeted edit.
+- The API/UI service health is not evidence of a working OpenAI response. Phase 0 remains blocked by the documented OpenAI 429 insufficient_quota / credit_balance_exhausted issue. No .env secrets or real patient data accessed; no commit/push/reset.
