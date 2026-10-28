@@ -46,7 +46,7 @@ jobs:
         run: python -m pip check
 
       - name: Compile application modules
-        run: python -m compileall -q agent.py main.py streamlit_ui.py ui_helpers.py toolkit data_models utils knowledge_base.py support
+        run: python -m compileall -q agent.py main.py streamlit_ui.py ui_helpers.py toolkit data_models utils knowledge_base.py patient_accounts.py security_controls.py support
 
       - name: Run test suite
         env:

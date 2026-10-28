@@ -56,6 +56,27 @@ def test_handoff_case_lifecycle(tmp_path):
     assert list_pending_handoffs(db_path=db_path) == []
 
 
+def test_handoff_lifecycle_rejects_invalid_transitions_and_terminal_reopen(tmp_path):
+    db_path = tmp_path / "handoffs.sqlite3"
+    case = create_handoff_case([HumanMessage(content="Need support")], "human_requested", db_path=db_path)
+
+    with pytest.raises(ValueError, match="pending -> resolved"):
+        update_handoff_status(case["case_id"], "resolved", db_path=db_path)
+    assert get_handoff_case(case["case_id"], db_path=db_path)["status"] == "pending"
+
+    assert update_handoff_status(case["case_id"], "acknowledged", db_path=db_path)
+    assert update_handoff_status(case["case_id"], "resolved", db_path=db_path)
+    with pytest.raises(ValueError, match="resolved -> pending"):
+        update_handoff_status(case["case_id"], "pending", db_path=db_path)
+    assert get_handoff_case(case["case_id"], db_path=db_path)["status"] == "resolved"
+
+
+def test_handoff_status_update_returns_false_for_unknown_case(tmp_path):
+    db_path = tmp_path / "handoffs.sqlite3"
+    create_handoff_case([HumanMessage(content="Need support")], "human_requested", db_path=db_path)
+    assert not update_handoff_status("missing-case", "cancelled", db_path=db_path)
+
+
 def test_invalid_handoff_status_is_rejected(tmp_path):
     db_path = tmp_path / "handoffs.sqlite3"
     case = create_handoff_case([HumanMessage(content="help")], "human_requested", db_path=db_path)

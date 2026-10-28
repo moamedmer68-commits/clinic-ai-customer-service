@@ -14,7 +14,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import text
+
+from patient_accounts import (
+    account_for_token, approve_account, authenticate_and_create_session,
+    create_pending_account, deactivate_account, initialize_database, make_engine, revoke_token, session_factory,
+)
+from security_controls import (
+    clear_login_failures, initialize_security_tables, login_is_locked,
+    record_login_failure, security_session_factory, write_audit_event,
+)
 
 load_dotenv()
 
@@ -50,6 +60,26 @@ class UserQuery(BaseModel):
     id_number: int = Field(..., ge=1000000, le=99999999)
     messages: str = Field(..., min_length=1, max_length=10_000)
     session_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class PatientRegistration(BaseModel):
+    full_name: str = Field(min_length=2, max_length=160)
+    email: str = Field(min_length=5, max_length=254)
+    phone: str | None = Field(default=None, max_length=32)
+    password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", value):
+            raise ValueError("Enter a valid email address")
+        return value
+
+
+class PatientLogin(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class RequestIdFilter(logging.Filter):
@@ -157,15 +187,33 @@ def create_app() -> FastAPI:
         app.state.graph = None
         app.state.checkpoint_connection = None
         app.state.startup_error = None
+        app.state.patient_db_error = None
+        app.state.patient_engine = None
+        app.state.patient_session_factory = None
+        app.state.security_session_factory = None
         try:
             app.state.graph, app.state.checkpoint_connection = _build_graph()
             logger.info("Application dependencies initialized")
         except Exception as exc:
             app.state.startup_error = type(exc).__name__
             logger.error("Application started without an available graph: %s", type(exc).__name__)
+        try:
+            database_url = os.getenv("PATIENT_DATABASE_URL", "sqlite:///./runtime-data/patient_accounts.sqlite3")
+            if database_url.startswith("sqlite:") and database_url not in ("sqlite://", "sqlite:///:memory:"):
+                Path(database_url.replace("sqlite:///", "", 1)).parent.mkdir(parents=True, exist_ok=True)
+            app.state.patient_engine = make_engine(database_url)
+            initialize_database(app.state.patient_engine)
+            initialize_security_tables(app.state.patient_engine)
+            app.state.patient_session_factory = session_factory(app.state.patient_engine)
+            app.state.security_session_factory = security_session_factory(app.state.patient_engine)
+        except Exception as exc:
+            app.state.patient_db_error = type(exc).__name__
+            logger.error("Patient account database initialization failed: %s", type(exc).__name__)
         yield
         if app.state.checkpoint_connection is not None:
             app.state.checkpoint_connection.close()
+        if app.state.patient_engine is not None:
+            app.state.patient_engine.dispose()
 
     api = FastAPI(title="Clinic AI Customer Service", lifespan=lifespan)
     api.state.invoke_lock = threading.Lock()
@@ -216,7 +264,7 @@ def create_app() -> FastAPI:
     @api.get("/health")
     @api.get("/health/ready")
     def health(request: Request):
-        if request.app.state.graph is None:
+        if request.app.state.graph is None or request.app.state.patient_session_factory is None:
             return _error_response(request, 503, "service_unavailable", "Service dependencies are unavailable.")
         if not os.getenv("API_ACCESS_TOKEN", "").strip() and not _unauthenticated_local_dev_allowed():
             return _error_response(request, 503, "api_auth_not_configured", "API access is not configured.")
@@ -226,9 +274,142 @@ def create_app() -> FastAPI:
             "request_id": request.state.request_id,
         }
 
+    def _db_session(request: Request):
+        factory = request.app.state.patient_session_factory
+        if factory is None:
+            return None
+        return factory()
+
+    def _bearer_token(request: Request) -> str:
+        value = request.headers.get("Authorization", "")
+        scheme, _, token = value.partition(" ")
+        return token.strip() if scheme.lower() == "bearer" else ""
+
+    def _safe_account(account):
+        return {"status": account.status, "patient_id": account.patient_id, "full_name": account.full_name}
+
+    @api.post("/patients/register", status_code=201)
+    def register_patient(payload: PatientRegistration, request: Request):
+        with _db_session(request) as db:
+            try:
+                account = create_pending_account(
+                    db, full_name=payload.full_name, email=payload.email, phone=payload.phone, password=payload.password
+                )
+                # Product decision: self-registration does not require identity verification or staff approval.
+                account = approve_account(db, account.id)
+                account, token = authenticate_and_create_session(db, email=payload.email, password=payload.password)
+                if account is None or token is None:
+                    raise RuntimeError("Newly registered account could not establish a session")
+                logger.info("Patient self-registration completed", extra={"request_id": request.state.request_id})
+            except ValueError:
+                return _error_response(request, 409, "registration_conflict", "An account with this email already exists.")
+        return {"status": "approved", "access_token": token, "token_type": "bearer", "expires_in": 43200, "patient": _safe_account(account), "request_id": request.state.request_id}
+
+    @api.post("/patients/login")
+    def login_patient(payload: PatientLogin, request: Request):
+        security_factory = request.app.state.security_session_factory
+        if security_factory is None:
+            return _error_response(request, 503, "security_store_unavailable", "Authentication security controls are unavailable.")
+        with security_factory() as security_db:
+            if login_is_locked(security_db, payload.email):
+                write_audit_event(security_db, event_type="login_throttled", request_id=request.state.request_id)
+                return _error_response(request, 429, "login_temporarily_locked", "Too many failed attempts. Try again in 15 minutes.")
+        with _db_session(request) as db:
+            account, token = authenticate_and_create_session(db, email=payload.email, password=payload.password)
+        with security_factory() as security_db:
+            if account is None:
+                record_login_failure(security_db, payload.email)
+                write_audit_event(security_db, event_type="login_failed", request_id=request.state.request_id)
+            elif account.status == "approved" and token:
+                clear_login_failures(security_db, payload.email)
+                write_audit_event(security_db, event_type="login_succeeded", request_id=request.state.request_id, target_account_id=account.id)
+            else:
+                write_audit_event(security_db, event_type="login_not_approved", request_id=request.state.request_id, target_account_id=account.id)
+        if account is None:
+            return _error_response(request, 401, "invalid_credentials", "Email or password is incorrect.")
+        if account.status != "approved" or token is None:
+            return _error_response(request, 403, "account_not_approved", "Your account is awaiting clinic staff approval.")
+        return {"access_token": token, "token_type": "bearer", "expires_in": 43200, "patient": _safe_account(account), "request_id": request.state.request_id}
+
+    @api.get("/patients/me")
+    def patient_me(request: Request):
+        token = _bearer_token(request)
+        with _db_session(request) as db:
+            account = account_for_token(db, token)
+        if account is None:
+            return _error_response(request, 401, "unauthorized_patient", "A valid patient login is required.")
+        return {"patient": _safe_account(account), "request_id": request.state.request_id}
+
+    @api.post("/patients/logout")
+    def logout_patient(request: Request):
+        token = _bearer_token(request)
+        with _db_session(request) as db:
+            revoked = revoke_token(db, token)
+        if not revoked:
+            return _error_response(request, 401, "unauthorized_patient", "A valid patient login is required.")
+        return {"status": "logged_out", "request_id": request.state.request_id}
+
+    def _authorize_staff(request: Request):
+        configured = os.getenv("STAFF_REVIEW_TOKEN", "").strip()
+        supplied = request.headers.get("X-Staff-Review-Key", "")
+        if not configured:
+            return _error_response(request, 503, "staff_review_not_configured", "Staff review access is not configured.")
+        if not supplied or not hmac.compare_digest(configured, supplied):
+            return _error_response(request, 401, "unauthorized_staff", "Valid staff review credentials are required.")
+        return None
+
+    @api.get("/staff/pending-registrations")
+    def pending_registrations(request: Request):
+        denied = _authorize_staff(request)
+        if denied is not None:
+            return denied
+        from sqlalchemy import select
+        from patient_accounts import PatientAccount
+        with _db_session(request) as db:
+            accounts = db.scalars(select(PatientAccount).where(PatientAccount.status == "pending_review").order_by(PatientAccount.created_at)).all()
+            return {"items": [{"account_id": row.id, "full_name": row.full_name, "email": row.email, "phone": row.phone, "created_at": row.created_at.isoformat()} for row in accounts], "request_id": request.state.request_id}
+
+    @api.post("/staff/registrations/{account_id}/approve")
+    def approve_registration(account_id: int, request: Request):
+        denied = _authorize_staff(request)
+        if denied is not None:
+            return denied
+        with _db_session(request) as db:
+            try:
+                account = approve_account(db, account_id)
+            except ValueError:
+                return _error_response(request, 409, "registration_state_conflict", "The registration is not awaiting review.")
+        if account is None:
+            return _error_response(request, 404, "registration_not_found", "Registration was not found.")
+        with request.app.state.security_session_factory() as security_db:
+            write_audit_event(security_db, event_type="staff_account_approved", request_id=request.state.request_id, target_account_id=account.id)
+        return {"status": "approved", "patient": _safe_account(account), "request_id": request.state.request_id}
+
+    @api.post("/staff/accounts/{account_id}/deactivate")
+    def deactivate_patient_account(account_id: int, request: Request):
+        denied = _authorize_staff(request)
+        if denied is not None:
+            return denied
+        with _db_session(request) as db:
+            account = deactivate_account(db, account_id)
+        if account is None:
+            return _error_response(request, 404, "account_not_found", "Patient account was not found.")
+        with request.app.state.security_session_factory() as security_db:
+            write_audit_event(security_db, event_type="staff_account_deactivated", request_id=request.state.request_id, target_account_id=account.id)
+        logger.info("Patient account deactivated by staff", extra={"request_id": request.state.request_id})
+        return {"status": "deactivated", "patient": _safe_account(account), "request_id": request.state.request_id}
+
     @api.post("/execute")
     def execute_agent(user_input: UserQuery, request: Request):
         graph = request.app.state.graph
+        authenticated_patient = None
+        if os.getenv("PATIENT_AUTH_REQUIRED", "true").strip().lower() == "true":
+            with _db_session(request) as db:
+                authenticated_patient = account_for_token(db, _bearer_token(request))
+            if authenticated_patient is None:
+                return _error_response(request, 401, "unauthorized_patient", "A valid patient login is required.")
+            if str(user_input.id_number) != str(authenticated_patient.patient_id):
+                return _error_response(request, 403, "patient_identity_mismatch", "The requested patient does not match the authenticated account.")
         if graph is None:
             logger.error("Agent request rejected because graph is unavailable", extra={"request_id": request.state.request_id})
             return _error_response(request, 503, "service_unavailable", "Service dependencies are unavailable.")

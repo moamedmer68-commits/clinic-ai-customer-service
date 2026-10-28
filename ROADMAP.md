@@ -411,3 +411,115 @@ Append a dated entry after each work session: phase, files changed, exact test c
 - Added an AppTest for switching the UI to Arabic. Focused verification: `python -m pytest tests\\test_streamlit_ui.py tests\\test_ui_helpers.py -q -p no:cacheprovider` — 16 passed. Full suite before the new language-toggle test: 119 passed in 7.10s; rerun the full suite after the final test addition. `compileall` and `git diff --check` passed (only line-ending notices).
 - Not completed: manual browser screenshots at desktop/mobile widths, keyboard-only navigation, contrast/accessibility audit, and live API/model interaction. Automated AppTest does not prove these visual acceptance criteria. The existing OpenAI quota issue may block genuine model interaction.
 - No secrets changed, no commit/push performed, and pre-existing user modifications/untracked scratch files preserved.
+
+
+### Phase 10 verification checkpoint - 2026-10-18
+- Reviewed `docs/DEVELOPMENT_PLAN.md`, `docs/PRODUCTION_READINESS.md`, and `docs/CI_CD.md` before verification. Scope remains production-readiness evidence and release gates; this checkpoint does not claim real-clinic readiness.
+- Current branch commit `71e76568fd4f4eb68d248670a0827d5f9d316d95` passed GitHub Actions run #18: dependency install/checks, compile, full tests, and container image build. Run: https://github.com/moamedmer68-commits/clinic-ai-customer-service/actions/runs/39129199285
+- Local full test suite: `.\\.venv\\Scripts\\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp-phase10-final` - 120 passed in 7.74s.
+- Local compile check passed for app, UI, toolkit, data models, utilities, knowledge base, and support modules. `pip check` reported `No broken requirements found`; `docker compose config --quiet` passed; `git diff --check` passed.
+- A fresh local Compose/container runtime check could not be repeated because Docker Desktop's Linux engine pipe was unavailable. The hosted CI image build passed for this commit; no claim is made that local containers were started in this checkpoint.
+- Current GitHub Actions run confirms CI/build for the pushed commit only; it does not complete manual browser/mobile/keyboard accessibility acceptance, a genuine model call (OpenAI quota issue remains documented), or production operational approvals.
+- Phase 10 remains **in progress**. Release blockers still include clinic-approved FAQ and current schedule, end-user authentication/authorization, rate limiting/TLS/managed secrets, retention/deletion/audit/encryption policies, production transactional persistence, staffed human escalation, backup/restore rehearsal, security/load tests, deployment/rollback and manual UI acceptance. These require clinic/environment decisions and evidence, not fabricated defaults.
+- Existing user changes in `tests/test_tools.py`, `toolkit/toolkits.py`, `.vscode/`, `isolated_test*.py`, and `scratch*.py` were preserved. No secrets or patient data were staged or changed; no commit/push performed for this documentation checkpoint.
+
+
+### Repository organization checkpoint — 2026-10-18
+- Moved the eight local exploratory scripts from the repository root to `dev/experiments/` without changing their contents and added a folder README. They remain local/untracked and were not staged.
+- Kept production entrypoints and modules in the root because Dockerfile COPY commands, tests, and current commands import them by those paths. A wider package-layout refactor is intentionally deferred.
+- Verification after organization: full suite 120 passed in 7.45s; compile check, `docker compose config --quiet`, and `git diff --check` passed. Existing user changes were preserved; no commit or push performed.
+
+
+### Phase 0 runtime recheck — 2026-10-18
+- Rebuilt and started the local Compose stack using `docker compose up -d --build`; API and UI images built successfully.
+- Verified API `/health/live` = HTTP 200, API `/health/ready` = HTTP 200, and Streamlit `/` = HTTP 200 after startup; API container reached Docker `healthy`.
+- This is runtime/endpoint verification only, not a successful end-to-end LLM chat. The known direct OpenAI error remains HTTP 429 `insufficient_quota` / `credit_balance_exhausted`; real UI-to-agent smoke acceptance is still blocked until usable OpenAI API quota is restored.
+- No provider change, application-code change, secret read/change, commit, push, or merge performed. Existing working-tree changes preserved.
+
+
+### Phase 0 end-to-end blocker reproduced — 2026-10-18
+- Sent a synthetic request from the UI container to `POST /execute` with the configured service credential (secret value not printed): HTTP 500, request ID `d96182df-a964-458b-94cb-a05ce2445b12`, safe error `agent_execution_failed`.
+- Sanitized API logs correlate that request with repeated OpenAI Chat Completions HTTP 429 and `insufficient_quota` / `credit_balance_exhausted` (“no credits remaining”). Thus UI/API transport is working; the genuine agent response is blocked by OpenAI API billing/quota.
+- Phase 0 remains blocked pending restored quota and a repeated successful UI-to-agent smoke test. Compose containers remain running. Synthetic test only; no real patient data, secrets displayed, app code changed, commit or push.
+
+
+### Patient account security work — 2026-10-18
+- Added SQLAlchemy patient account/session models, manual-review registration, staff approval, post-approval unique 8-digit Patient ID generation, password hashing, expiring opaque bearer sessions, login/me/logout endpoints, and patient-session enforcement for POST /execute when PATIENT_AUTH_REQUIRED=true.
+- Added PostgreSQL Compose service/volume and database configuration/dependencies. Added focused account/auth tests.
+- Staff review currently relies on a separate shared STAFF_REVIEW_TOKEN; individual staff identities/RBAC and production safeguards remain open. Existing Streamlit UI has not yet been integrated with login/registration, so Phase 3 is required before end-user chat works with patient auth enabled.
+- This is an implementation checkpoint only, not production readiness. No commit/push; existing user changes preserved.
+
+
+### Phase 3 execution entry - patient onboarding - 2026-10-20
+- Created the branch feat/phase-3-patient-onboarding before making Phase 3 UI changes. The previous local Phase 2 verification edits were preserved.
+- Updated streamlit_ui.py to provide English/Arabic registration and sign-in forms against the existing patient API routes. New registrations remain pending staff identity review; the UI does not fabricate or issue a Patient ID.
+- Chat is now gated on an approved login: the UI reads the Patient ID from the API-issued patient profile, sends the bearer token with /execute, and supports logout through /patients/logout. Removed manual Patient ID entry from the normal user journey.
+- Added AppTest coverage for onboarding, registration request fields, login token/profile handling, authenticated chat payload, and language selection.
+- Focused tests: 26 passed (tests/test_streamlit_ui.py tests/test_ui_helpers.py tests/test_patient_accounts.py). Final full suite after auth-expiry handling: 130 passed in 11.25s. Compileall, pip check, Compose config validation, and git diff --check passed. Docker Compose UI image build was attempted but could not connect because the Docker Desktop Linux engine pipe was unavailable.
+- Manual desktop/mobile, keyboard/accessibility, and genuine API/model acceptance remain open. The known OpenAI insufficient-quota issue blocks confirmation of a real agent response. Shared staff-review token/RBAC and production security controls remain release blockers.
+- No commit/push, secret access, or real patient data use.
+
+### Phase 4 workflow safety revalidation - 2026-10-20
+- Started work on `feat/phase-4-agent-workflow-safety`, preserving the existing uncommitted Phase 2/3 edits.
+- Existing automated coverage for routing, appointment booking/cancellation/rescheduling intent, FAQ unknown-answer fallback, pending-action exact confirmation/decline/expiry/session scoping, human handoff status, and patient isolation was revalidated.
+- Focused suite: 66 passed in 8.75s. Full suite: 130 passed in 11.13s.
+- No implementation change was made because this pass found no failing automated regression requiring a code change. Phase 4 remains in progress: live bilingual model acceptance is blocked by OpenAI API 429 insufficient_quota; clinic-approved knowledge/current availability and a staffed human escalation destination are still absent. Automated tests do not prove production readiness.
+- No commit or push performed; no secrets or real patient data used.
+
+### Phase 5 data readiness - 2026-10-20
+- Switched to `feat/phase-5-approved-clinic-data`; preserved existing working-tree changes and did not commit/push.
+- Stopped the temporary local UI/API demo processes and removed the temporary demo-auth bypass from the UI source. Normal patient sign-in and API patient-session enforcement are restored in source; no `.env` values were modified.
+- Confirmed `data/clinic_faq.json` is empty. Existing appointment/demo fixtures are synthetic/historical, not an approved live schedule. No fabricated clinic facts or live availability were added.
+- Strict FAQ validation, FAQ behavior and synthetic-data safety tests: 21 passed. Full suite: 130 passed in 11.38s.
+- Phase 5 remains blocked for real-clinic use until a clinic owner supplies/reviews current FAQ and schedule data and documents source, timezone, ownership and update/expiry rules. Docker Desktop engine was unavailable; no container runtime validation was possible.
+
+### Phase 6 handoff lifecycle hardening - 2026-10-20
+- Started branch `feat/phase-6-handoff-lifecycle`, preserving working-tree edits. Not yet pushed: Phase 5 remains blocked on clinic-owned data, and `streamlit_ui.py` needs encoding repair before a safe publish.
+- Added a strict SQLite handoff status transition graph and transactional status updates; terminal resolved/cancelled cases cannot be reopened, unknown case IDs return false, and invalid transitions raise a validation error.
+- Handoff tests: 10 passed. Full suite: 132 passed in 12.30s.
+- External staffed notification, authenticated staff case-management, and approved retention/deletion policy remain open; local queue is not represented as a live human handoff.
+
+### Phase 7 initial security lifecycle - 2026-10-20
+- Added a staff-authorized account deactivation endpoint. It marks the patient account deactivated and revokes all active sessions transactionally; unauthenticated staff requests are denied and missing accounts return 404.
+- Account tests: 10 passed; full suite: 134 passed in 15.48s.
+- Phase 7 remains in progress: production migrations, staff RBAC, rate limiting, account recovery, audit/privacy lifecycle, HTTPS/secret rotation, backup/restore and load/security tests remain open. Docker runtime check unavailable.
+
+
+### Phase 7/8 continuation — security controls and verification — 2026-10-23
+- Added security_controls.py with persistent database-backed login throttling (five invalid-credential attempts per normalized email identifier triggers a 15-minute lock) and minimal security audit events. Audit rows store event type, request ID, timestamp, and optional internal account ID; they deliberately exclude email, phone, Patient ID, password, tokens, and request bodies.
+- Wired the controls into the patient login flow and staff account approval/deactivation routes. Successful login clears the associated failed-attempt record; locked attempts return HTTP 429.
+- Added regression tests for lockout after five failures, HTTP 429 behavior, audit-event minimization, and clearing failures after successful login.
+- Updated Dockerfile to include the new module and CI compile step to compile it.
+- Verification on the current working tree: patient account tests — 12 passed; full suite — 136 passed in 18.82s; compileall passed; pip check reported no broken requirements; docker compose config --quiet passed; git diff --check passed (only LF/CRLF working-copy warning).
+- Phase 8 container build attempted via docker compose build but could not run because Docker Desktop's Linux engine pipe is unavailable (dockerDesktopLinuxEngine not found). No hosted CI run was dispatched because that requires pushing, and no push/commit was authorized. No deployment was attempted.
+- Phase 7 remains IN PROGRESS: login throttling is per email identifier and does not replace edge/IP rate limits; staff access still uses a shared token rather than individual identities/RBAC; production database migrations, recovery, retention/deletion policy, TLS/secret rotation, backup/restore, and load/security review remain open.
+- Phase 8 remains IN PROGRESS: local tests/config checks pass, but image build, PostgreSQL container/runtime validation, manual bilingual/responsive/accessibility acceptance, live OpenAI-backed UI-to-agent smoke test (previously blocked by OpenAI quota), staging, restore/rollback rehearsal, and release approval remain outstanding.
+- No commit, push, reset, or deletion performed. No secrets or real patient data were read or used.
+
+
+### Phase 9/10 execution entry — 2026-10-23
+- Revalidated Phase 9 frontend/UI and Phase 10 production-readiness checks against the roadmap and current source tree. Existing UI implementation already includes bilingual registration/sign-in, chat transcript, session controls, input validation, loading/error feedback and handoff status; no unrelated UI rewrite was warranted.
+- Focused verification command: `.\\.venv\\Scripts\\python.exe -m pytest tests\\test_ui_helpers.py tests\\test_streamlit_ui.py tests\\test_api.py tests\\test_handoff.py -q -p no:cacheprovider --basetemp=.pytest-tmp-phase9-10-focused` — 44 passed in 3.31s.
+- Full verification command: `.\\.venv\\Scripts\\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp-phase9-10-full` — 136 passed in 15.18s. `compileall` passed; `pip check` reported no broken requirements; `docker compose config --quiet` passed; `git diff --check` passed with LF/CRLF working-copy notices.
+- Docker Desktop Linux engine was unavailable (`dockerDesktopLinuxEngine` pipe missing), so a new image build or Compose runtime smoke test could not be completed. Hosted CI was not triggered because the working tree remains uncommitted/unpushed.
+- Added `docs/PROJECT_COMPLETION_REPORT_2026-10-23.md` with the phase-by-phase implementation summary, architecture, verification evidence and production blockers. Updated README's stale test count from 130 to 136.
+- Phase 9 remains in progress until manual browser/mobile/responsive/keyboard accessibility and real API/model acceptance are performed. Phase 10 remains in progress pending staff RBAC, edge/IP rate limiting, account recovery, retention/privacy controls, managed transactional persistence, approved clinic FAQ/current schedule, staffed escalation, Docker/runtime validation, backup/restore, security/load testing, staging and rollback approval.
+- No commit, push, deployment, reset, or deletion performed. No secrets or real patient data were accessed.
+
+
+## 2026-10-24 development-plan checkpoint
+- Rechecked local service readiness: FastAPI /health/ready returned HTTP 200 and Streamlit / returned HTTP 200 after starting both services locally.
+- The latest full automated suite on the working tree passed 136 tests in 16.96s; Python compile checks and git diff --check passed. These checks do not prove a successful live OpenAI chat or production readiness.
+- Phase 0 remains blocked for acceptance because the last documented OpenAI model invocation returned 429 insufficient_quota / credit_balance_exhausted. A successful UI-to-agent model response was not demonstrated in this checkpoint.
+- Prepared docs/REGISTRATION_IDENTITY_DESIGN.md for Phase 1, covering minimum-data registration, staff review/email/SMS verification options, acceptance criteria, and decisions needed from the clinic owner. No verification provider or identity method was invented and no new identity-verification code was added before approval.
+- Phase 2/3 existing account and bilingual UI implementation remains in progress; Phase 4 still needs live Arabic/English workflow acceptance; Phase 5 is blocked on clinic-approved FAQ and current authorized schedule; Phase 6 needs staffed handoff and retention policy; Phase 7 needs named staff RBAC, production database migrations, rate limiting, privacy/security/backup controls; Phase 8 needs container/runtime, manual UI, staging, recovery/rollback, and release approval evidence.
+- No secrets or real patient data accessed. No commit, push, reset, or deletion performed.
+
+
+### 2026-10-24 — Codebase refactoring audit
+- Began the requested codebase cleanup with a repository/architecture audit documented in `docs/REFACTORING_AUDIT_2026-10-24.md`. Reviewed README, runtime/test dependency manifests, Dockerfile, roadmap/development plan, API, agent, UI, account/session, RAG, security, tool, support, data-model, and utility modules.
+- Updated README onboarding/API guidance to match the current approved direct-registration decision (no identity verification or staff approval for new registrations). Existing staff endpoints are described as legacy; no migration or deletion of legacy routes/data was performed.
+- Baseline full suite: 10 failed, 126 passed in 14.81s. All 10 failures are existing account tests asserting the former HTTP 202 pending-review contract, while the working-tree API returns HTTP 201 and an authenticated session. This mismatch is recorded and must be resolved with behavior-specific tests; no failures were suppressed.
+- Ruff is not installed in the current virtual environment, so no Ruff result is claimed and no dependency was added. The large historical `requirements.txt` was not pruned because `setup.py` consumes it as `install_requires` and it may serve notebooks/experiments or downstream installs. Runtime dependencies remain separately pinned in `requirements-runtime.txt`.
+- No broad module moves or agent/prompt changes were made because Docker COPY paths and tests rely on the existing module layout, and the audit did not establish safe redundant agent layers. Arabic UI encoding repair is deferred to a focused change.
+- No commit, push, reset, deletion, secret access, or real-patient-data use. Full refactor is not complete; next priority is reconciling registration behavior and account tests, then rerunning validation.
