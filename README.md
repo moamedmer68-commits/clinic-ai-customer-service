@@ -1,176 +1,118 @@
 # Clinic AI Customer Service
 
-An AI-powered clinic assistant for answering patient FAQs and managing doctor appointments (check availability, book, cancel, reschedule) using **LangGraph**, **FastAPI**, **Streamlit**, **SQLAlchemy**, and **OpenAI**.
+An AI multi-agent system for clinic customer service and appointment management built with **LangGraph**, **FastAPI**, **Streamlit**, **SQLAlchemy**, and **OpenAI**. It answers clinic FAQs using semantic search (RAG) and manages doctor appointments (check availability, book, cancel, reschedule) through validated tools and a `YES`/`NO` confirmation gate.
 
 ---
 
-## 1. How It Works
+## 1. Agents in the System (`agent.py`)
 
-The system separates **informational questions (RAG)** from **appointment actions (tools)** so the AI never invents clinic policies or changes appointments without confirmation:
+| Agent / Node | Role & Tools |
+| :--- | :--- |
+| **Supervisor (`supervisor_node`)** | Entry point that checks for escalation triggers and classifies the user's intent (`faq`, `availability`, `book`, `cancel`, `reschedule`, or `fallback`) to route the request to the right specialist. |
+| **FAQ Agent (`faq_node`)** | Searches approved clinic FAQs via OpenAI embeddings and a local vector index (`knowledge_base.py`). Refuses medical-advice requests and escalates unanswered questions. |
+| **Information Agent (`information_node`)** | ReAct agent that checks available appointment slots using `check_availability_by_doctor` and `check_availability_by_specialization` (`toolkit/toolkits.py`). |
+| **Booking Agent (`booking_node`)** | ReAct agent that validates booking, cancellation, and rescheduling details and stages a pending proposal via `prepare_appointment_change` (`support/pending_actions.py`). |
+| **Escalation Handler (`escalation_node`)** | Triggered on human-agent requests, complaints, urgent symptoms, or unresolved FAQs; records a redacted support case in SQLite (`support/handoff.py`). |
+
+> **Confirmation Gate:** The Booking Agent never modifies the schedule directly. FastAPI (`main.py`) executes `set_appointment`, `cancel_appointment`, or `reschedule_appointment` only after the patient replies with an exact `YES` (or `نعم` / `أيوه`).
+
+---
+
+## 2. Architecture & Project Structure
 
 ```mermaid
 flowchart TD
-    User["Patient (Streamlit UI / API)"] --> API["FastAPI (main.py)"]
-    API --> Auth["Patient Login & Bearer Auth (patient_accounts.py)"]
-    API --> Confirm{"Pending Confirmation? (YES / NO)"}
+    User["Patient (Streamlit UI / API)"] --> API["FastAPI POST /execute (main.py)"]
+    API --> Auth["Patient Auth (patient_accounts.py)"]
+    API --> Confirm{"Pending Action Confirmation? (YES / NO)"}
 
     Confirm -->|"Yes"| Tools["Appointment Tools (toolkit/toolkits.py)"]
-    Confirm -->|"No"| Supervisor["LangGraph Supervisor (agent.py)"]
+    Confirm -->|"No"| Supervisor["Supervisor Node (agent.py)"]
 
-    Supervisor -->|"FAQ"| FAQ["FAQ Node (knowledge_base.py)"]
-    Supervisor -->|"Check Slots"| Info["Information Agent"]
-    Supervisor -->|"Book / Cancel / Reschedule"| Booking["Booking Agent"]
-    Supervisor -.->|"Human / Complaint / Urgent"| Handoff["Human Handoff Queue (support/handoff.py)"]
+    Supervisor -->|"faq"| FAQ["FAQ Agent (faq_node)"]
+    Supervisor -->|"availability"| Info["Information Agent (information_node)"]
+    Supervisor -->|"book / cancel / reschedule"| Booking["Booking Agent (booking_node)"]
+    Supervisor -.->|"Human / Complaint / Urgent"| Handoff["Escalation Queue (support/handoff.py)"]
 
-    FAQ --> VectorIndex[("FAQ JSON + Vector Index")]
-    FAQ -.->|"Unanswered / Medical Advice"| Handoff
+    FAQ --> VectorIndex[("FAQ Vector Index (knowledge_base.py)")]
+    FAQ -.->|"Unresolved / Medical Advice"| Handoff
     Info --> Tools
-    Booking -->|"Stages Proposal Only"| Pending[("Pending Actions DB (support/pending_actions.py)")]
+    Booking -->|"prepare_appointment_change"| Pending[("Pending Actions DB (support/pending_actions.py)")]
     Tools --> CSV[("Appointments CSV (doctor_availability.csv)")]
 ```
 
-1. **Patient Onboarding & Auth:** New patients register (`POST /patients/register`) and receive an 8-digit `patient_id` plus an authenticated bearer session immediately; returning patients sign in (`POST /patients/login`). Identity verification and staff approval are not part of self-registration. Password hashing, session expiry/revocation, login throttling, and patient-scoped authorization remain required.
-2. **Supervisor Routing:** Every message goes to the LangGraph `supervisor`, which routes it to the right specialist:
-   - **`faq_node`:** Searches approved clinic FAQs using OpenAI embeddings (`knowledge_base.py`). Refuses medical advice and escalates unknown questions.
-   - **`information_node`:** Checks available slots by doctor or specialty (`toolkit/toolkits.py`).
-   - **`booking_node`:** Validates booking, cancellation, or rescheduling requests and stages a pending proposal (`prepare_appointment_change`) without modifying the schedule.
-3. **Safe Confirmation Gate:** The schedule is only updated when the patient replies with an exact standalone `YES` (or `نعم` / `أيوه`) in the next turn, or cancelled if they reply `NO` (or `لا`).
-4. **Human Escalation:** Requests for a human agent, complaints, urgent symptoms, or unanswered FAQs are saved to a local SQLite support queue (`support/handoff.py`) with a tracking case ID.
-
----
-
-## 2. Project Structure
-
 ```text
 doctor-appoitment-multiagent/
-├── main.py                  # FastAPI backend, auth routes, health checks, and /execute endpoint
-├── agent.py                 # LangGraph workflow (Supervisor, FAQ, Information, and Booking nodes)
-├── streamlit_ui.py          # CareDesk Streamlit web UI (English & Arabic registration, login, and chat)
-├── ui_helpers.py            # Input validation and response formatting helpers for the UI
-├── patient_accounts.py      # SQLAlchemy models & auth logic for patient accounts and sessions
-├── knowledge_base.py        # Semantic FAQ retrieval (OpenAI embeddings + local vector index)
-├── prompt_library/
-│   └── prompt.py            # System prompt and routing rules for the Supervisor
-├── toolkit/
-│   └── toolkits.py          # CSV appointment lookup, booking, cancellation, and rescheduling tools
+├── main.py                    # FastAPI app, patient auth routes, confirmation gate, and /execute
+├── agent.py                   # LangGraph workflow (Supervisor, FAQ, Information, Booking nodes)
+├── streamlit_ui.py            # Streamlit chat interface (English & Arabic registration, login, chat)
+├── ui_helpers.py              # Validation and message formatting helpers for Streamlit
+├── patient_accounts.py        # SQLAlchemy models and bearer session authentication
+├── knowledge_base.py          # Semantic FAQ retrieval (OpenAI embeddings + local vector index)
+├── prompt_library/prompt.py   # System prompt and routing rules for the Supervisor
+├── toolkit/toolkits.py        # CSV availability lookup, booking, cancellation, and rescheduling tools
 ├── support/
-│   ├── pending_actions.py   # SQLite store for staged appointment changes awaiting YES/NO confirmation
-│   └── handoff.py           # SQLite queue for human support escalation and PII redaction
-├── data_models/
-│   └── models.py            # Pydantic validators for dates (DD-MM-YYYY HH:MM) and patient IDs
+│   ├── pending_actions.py     # SQLite store for staged appointment changes awaiting YES/NO
+│   └── handoff.py             # SQLite queue for human support escalation
+├── data_models/models.py      # Pydantic models for dates (DD-MM-YYYY HH:MM) and patient IDs
 ├── utils/
-│   ├── llms.py              # OpenAI model initialization with timeout and retry bounds
-│   └── session.py           # SHA-256 hashing for patient/session conversation threads
-├── data/
-│   ├── clinic_faq.json      # Clinic FAQ file (empty [] by default until filled with clinic data)
-│   └── doctor_availability.csv # Default sample appointment schedule CSV
-├── deployment/
-│   ├── prepare_demo_data.ps1 # PowerShell script to copy synthetic demo data into runtime-data/
-│   └── demo_data/           # Ready-to-use synthetic bilingual FAQs and 2026 appointment slots
-├── docs/                    # Detailed operational guides (RAG, Memory, Escalation, CI/CD, Roadmaps)
-├── tests/                   # 136 automated Pytest tests (API, agents, RAG, tools, auth, UI)
-├── Dockerfile               # Non-root Python 3.12 container image
-├── docker-compose.yml       # Full stack: PostgreSQL (db) + FastAPI (api) + Streamlit (ui)
-└── requirements-runtime.txt # Pinned runtime dependencies
+│   ├── llms.py                # OpenAI model loader with timeout and retry configuration
+│   └── session.py             # SHA-256 thread ID generator for conversation memory
+├── data/                      # Default FAQ JSON and appointment schedule CSV
+├── deployment/                # Synthetic demo data and prepare_demo_data.ps1 script
+├── tests/                     # Automated Pytest suite
+├── Dockerfile                 # Non-root Python 3.12 container image
+├── docker-compose.yml         # Multi-container setup (PostgreSQL + FastAPI + Streamlit)
+└── requirements-runtime.txt   # Pinned runtime dependencies
 ```
 
 ---
 
-## 3. Quick Start (How to Run It)
+## 3. How to Run It
 
-### Step 1: Install Dependencies
+### 1. Install Dependencies
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements-runtime.txt
-python -m pip install -r requirements-test.txt
 ```
 
-### Step 2: Prepare Demo Data & Environment
-
-Copy the synthetic demo files (26 English/Arabic FAQs + 18 sample appointment slots) into `runtime-data/`:
+### 2. Prepare Demo Data & `.env`
 
 ```powershell
 .\deployment\prepare_demo_data.ps1
 # Type DEMO-ONLY when prompted
-```
 
-Create your `.env` file from `.env.example`:
-
-```powershell
 Copy-Item .env.example .env
 ```
 
-Set these core values in `.env` for local execution:
+Update `.env` with your keys and local paths:
 
 ```dotenv
 OPENAI_API_KEY=your_openai_api_key
 API_ACCESS_TOKEN=your_random_secret_token
-STAFF_REVIEW_TOKEN=your_staff_secret_token
 PATIENT_DATABASE_URL=sqlite:///./runtime-data/patient_accounts.sqlite3
 APPOINTMENT_CSV_PATH=runtime-data/doctor_availability.csv
 CLINIC_FAQ_PATH=runtime-data/clinic_faq.json
 FAQ_RAG_INDEX_PATH=runtime-data/faq_index
 ```
 
-### Step 3: Run the Backend & Frontend
+### 3. Start the Application
 
-**Option A — Run Locally (Two Terminals):**
+**Run Locally (Two Terminals):**
 
 ```powershell
-# Terminal 1: Start FastAPI Backend (http://127.0.0.1:8003)
+# Terminal 1 — FastAPI Backend (http://127.0.0.1:8003)
 uvicorn main:app --host 127.0.0.1 --port 8003 --reload
 
-# Terminal 2: Start Streamlit UI (http://127.0.0.1:8501)
+# Terminal 2 — Streamlit UI (http://127.0.0.1:8501)
 streamlit run streamlit_ui.py
 ```
 
-**Option B — Run with Docker Compose (PostgreSQL + API + UI):**
+**Or Run with Docker Compose:**
 
 ```powershell
 docker compose up --build
-```
-
----
-
-## 4. How to Use & Benefit from the Project
-
-### 1. Using the Chat Interface (`http://127.0.0.1:8501`)
-1. **Register:** Open the **Create account** tab in Streamlit and submit a name, email, and password (`>= 12` chars).
-2. **Start Chatting:** After successful registration, the app signs you in automatically and displays the server-issued 8-digit `patient_id`. Returning patients can use the **Sign in** tab. No staff approval or identity-verification step is required for self-registration.
-   - *Ask FAQs:* `"What are your opening hours?"`
-   - *Check availability:* `"Is Dr John Doe available on 12-10-2026?"`
-   - *Book/Cancel/Reschedule:* `"Book an appointment with Dr John Doe on 12-10-2026 at 09:00"` -> then reply `YES` (or `نعم`) to confirm.
-
-### 2. Using the REST API Directly (`http://127.0.0.1:8003`)
-
-| Endpoint | Method | Purpose |
-| :--- | :--- | :--- |
-| `/health/live` & `/health/ready` | `GET` | Liveness and readiness health checks |
-| `/patients/register` | `POST` | Create a patient account, generate an 8-digit `patient_id`, and return an authenticated bearer session (HTTP 201) |
-| `/staff/pending-registrations` | `GET` | Legacy staff queue for accounts created under the previous pending-review flow |
-| `/staff/registrations/{id}/approve` | `POST` | Legacy approval endpoint; not required for new self-registration |
-| `/patients/login` | `POST` | Authenticate and get a 12-hour `Bearer` token |
-| `/patients/me` & `/patients/logout` | `GET` / `POST` | View active patient profile or revoke session token |
-| `/execute` | `POST` | Send chat messages or `YES`/`NO` confirmations (`X-API-Key` + `Bearer` token) |
-
-*(Note: For quick local testing of `/execute` without patient login, set `PATIENT_AUTH_REQUIRED=false` in `.env`.)*
-
-### 3. Customizing for Your Own Clinic
-- **Custom FAQs:** Add your clinic's Q&A items to a JSON file following `deployment/clinic_faq.example.json`, point `CLINIC_FAQ_PATH` to it, and build the embedding index:
-  ```powershell
-  python -m knowledge_base --source data/clinic_faq.json --index-dir data/faq_index
-  ```
-- **Custom Doctors & Schedule:** Update the schedule in `APPOINTMENT_CSV_PATH` (columns: `date_slot,specialization,doctor_name,is_available,patient_to_attend`) and update the allowed doctor/specialty lists in `toolkit/toolkits.py` and `support/pending_actions.py`.
-
----
-
-## 5. Running Tests
-
-Run the full offline test suite (136 tests at the latest verified checkpoint) without needing an active OpenAI connection:
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
 ```
